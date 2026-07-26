@@ -1,0 +1,66 @@
+{
+  "topic": "KEKOSONGAN DIPUNCAK : SIAPA YANG BERKUASA JIKA PRESIDEN JATUH ?",
+  "sources": [],
+  "segments": [
+    {
+      "act": "hook_thesis",
+      "text": "Ketika publik berandai-andai tentang kejatuhan seorang Presiden, mereka sering membayangkan sebuah revolusi romantis di mana rakyat mengambil alih kekuasaan, atau sebuah transisi hukum yang rapi di mana sang Wakil Presiden langsung disumpah keesokan paginya. Keduanya adalah fantasi yang sangat naif: Menggulingkan Presiden di era modern bukanlah perkara demonstrasi jalanan, melainkan perkara pencabutan dukungan dari kartel kekuasaan. Jika seorang Presiden dengan koalisi super-gemuk dan latar belakang militer kuat bisa digulingkan, itu artinya Arsitektur Legitimasi dan Mekanisme Kontrol negara sudah hancur, dan hukum rimba politik akan menangguhkan hukum tata negara. Siapa yang akan berkuasa? Bukan sang Wakil Presiden, melainkan faksi elit mana pun yang mampu mengamankan moncong senjata dan mengendalikan aliran logistik nasional.",
+      "keywords": [
+        "UUD 1945 terbakar",
+        "ruang gelap siluet jenderal",
+        "ketukan palu sidang paripurna"
+      ]
+    },
+    {
+      "act": "genesis_pattern",
+      "text": "Mari kita telusuri sejarah untuk menemukan polanya. Tahun 1998, Soeharto jatuh. Kekuasaan berpindah ke Habibie secara konstitusional, tapi ia hanya Presiden transisi. Dua tahun kemudian, ia dipaksa turun karena tak punya dukungan militer dan kapital politik. Tahun 2001, Gus Dur digulingkan. Bukan karena rakyat, tapi karena parlemen dan militer berbalik. Megawati naik lantaran ia pemimpin partai terbesar dan didukung faksi-faksi kuat itu. Polanya mengulang: konstitusi menunjuk pengganti, tapi tanpa mesin kekuasaan sendiri, Anda hanya sandera.",
+      "keywords": [
+        "Soeharto jatuh 1998",
+        "Habibie transisi",
+        "Gus Dur digulingkan 2001",
+        "Megawati naik"
+      ]
+    },
+    {
+      "act": "paradox_catalyst",
+      "text": "Paradoksnya: konstitusi menunjuk Wakil Presiden sebagai pengganti, tetapi kekuatannya hanya pinjaman. Jika Prabowo jatuh, Gibran naik tanpa memiliki dukungan militer atau partai mayoritas sendiri. Katalisnya? Partai-partai besar yang kehilangan 'pelindung' akan segera mengelilingi pewaris baru, memeras konsesi, dan mungkin memicu pemakzulan kedua.",
+      "keywords": [
+        "chess animation",
+        "giant hands",
+        "parliament building",
+        "political elites"
+      ]
+    },
+    {
+      "act": "invisible_mechanism",
+      "text": "Mekanisme tak terlihat ini beroperasi melalui empat pilar taktis: pertama, penempatan Triumvirat (Menhan, Menlu, Mendagri) sebagai pengalihan formal yang hanya instrumen administratif. Kedua, negosiasi tertutup antar Sindikat Konsensus—faksi militer pimpinan senjata, ketua partai mayoritas penguasa palu, dan cukong raksasa menguasai uang. Insentif tiap pilar: militer ingin mempertahankan kontrol moncong senjata, partai ingin mempertahankan dominasi legislasi, dan bisnis ingin melindungi aset triliunan. Ketiga, penempatan presiden etalase—tokoh militer 'moderat' atau elit sipil senior—untuk memberikan legitimasi tanpa mengubah struktur. Keempat, reset sistem ekstraksi kekayaan negara untuk mengakomodasi faksi pemenang, memastikan aliran sumber daya tetap mengalir ke kartel.",
+      "keywords": [
+        "diagram triumvirat",
+        "siluet negosiasi elit",
+        "infografis pilar kekuasaan",
+        "grafik reset ekonomi"
+      ]
+    },
+    {
+      "act": "projection_open_loop",
+      "text": "Jika presiden jatuh, skenario paling mungkin adalah triad Menhan‑Menlu‑Mendagri mengaktifkan mekanisme darurat, lalu faksi militer, partai mayoritas, dan konglomerat menominasikan seorang tokoh militer ‘moderasi’ sebagai wajah baru, sementara kendali senjata, legislatif, dan aliran dana tetap berada di tangan mereka.",
+      "keywords": [
+        "Triumvirat",
+        "tokoh militer moderasi",
+        "konsolidasi kekuasaan",
+        "panggung politik"
+      ]
+    },
+    {
+      "act": "projection_open_loop",
+      "text": "Alternatif yang lebih ideal ialah koalisi lintas‑partai, organisasi masyarakat sipil, dan akademisi yang menuntut revisi konstitusi, membentuk pemerintahan transisi teknokratik yang menutup celah ekstraksi kekayaan dan menempatkan kontrol keamanan pada lembaga non‑partisan; namun pertanyaannya, siapa yang akan berhasil menyalurkan kekuasaan itu ketika ruang hampa ini kembali terisi?",
+      "keywords": [
+        "koalisi lintas-partai",
+        "pemerintahan teknokratik",
+        "revisi konstitusi",
+        "lembaga non-partisan"
+      ]
+    }
+  ],
+  "style_id": "investigative_analysis"
+}

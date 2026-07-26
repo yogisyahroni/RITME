@@ -1,0 +1,31 @@
+{
+  "template_name": "demo_style",
+  "source_video": "/home/claude/videopipeline/cache/sample_reference_3shot.mp4",
+  "total_duration": 9.0,
+  "pacing": {
+    "shot_count": 3,
+    "avg_shot_duration": 3.0,
+    "median_shot_duration": 3.0,
+    "min_shot_duration": 2.0,
+    "max_shot_duration": 4.0,
+    "stdev_shot_duration": 0.82
+  },
+  "shots": [
+    {
+      "start": 0.0,
+      "end": 3.0,
+      "duration": 3.0
+    },
+    {
+      "start": 3.0,
+      "end": 5.0,
+      "duration": 2.0
+    },
+    {
+      "start": 5.0,
+      "end": 9.0,
+      "duration": 4.0
+    }
+  ],
+  "narration": null
+}

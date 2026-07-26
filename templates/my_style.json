@@ -1,0 +1,148 @@
+{
+  "template_name": "my_style",
+  "source_video": "E:\\antigraviti google\\SUDAH DEPLOY\\RITME\\cache\\uploads\\071d29346ab54c168963aa9aa6af3328_Video Project.mp4",
+  "total_duration": 58.9,
+  "pacing": {
+    "shot_count": 25,
+    "avg_shot_duration": 2.36,
+    "median_shot_duration": 1.47,
+    "min_shot_duration": 0.97,
+    "max_shot_duration": 13.33,
+    "stdev_shot_duration": 2.58
+  },
+  "shots": [
+    {
+      "start": 0.0,
+      "end": 1.933,
+      "duration": 1.933
+    },
+    {
+      "start": 1.933,
+      "end": 3.4,
+      "duration": 1.467
+    },
+    {
+      "start": 3.4,
+      "end": 4.367,
+      "duration": 0.967
+    },
+    {
+      "start": 4.367,
+      "end": 5.5,
+      "duration": 1.133
+    },
+    {
+      "start": 5.5,
+      "end": 6.7,
+      "duration": 1.2
+    },
+    {
+      "start": 6.7,
+      "end": 8.4,
+      "duration": 1.7
+    },
+    {
+      "start": 8.4,
+      "end": 10.333,
+      "duration": 1.933
+    },
+    {
+      "start": 10.333,
+      "end": 11.8,
+      "duration": 1.467
+    },
+    {
+      "start": 11.8,
+      "end": 14.5,
+      "duration": 2.7
+    },
+    {
+      "start": 14.5,
+      "end": 15.733,
+      "duration": 1.233
+    },
+    {
+      "start": 15.733,
+      "end": 16.833,
+      "duration": 1.1
+    },
+    {
+      "start": 16.833,
+      "end": 17.933,
+      "duration": 1.1
+    },
+    {
+      "start": 17.933,
+      "end": 19.333,
+      "duration": 1.4
+    },
+    {
+      "start": 19.333,
+      "end": 20.9,
+      "duration": 1.567
+    },
+    {
+      "start": 20.9,
+      "end": 22.4,
+      "duration": 1.5
+    },
+    {
+      "start": 22.4,
+      "end": 24.233,
+      "duration": 1.833
+    },
+    {
+      "start": 24.233,
+      "end": 25.433,
+      "duration": 1.2
+    },
+    {
+      "start": 25.433,
+      "end": 26.5,
+      "duration": 1.067
+    },
+    {
+      "start": 26.5,
+      "end": 27.833,
+      "duration": 1.333
+    },
+    {
+      "start": 27.833,
+      "end": 29.1,
+      "duration": 1.267
+    },
+    {
+      "start": 29.1,
+      "end": 30.433,
+      "duration": 1.333
+    },
+    {
+      "start": 30.433,
+      "end": 37.0,
+      "duration": 6.567
+    },
+    {
+      "start": 37.0,
+      "end": 50.333,
+      "duration": 13.333
+    },
+    {
+      "start": 50.333,
+      "end": 55.1,
+      "duration": 4.767
+    },
+    {
+      "start": 55.1,
+      "end": 58.9,
+      "duration": 3.8
+    }
+  ],
+  "narration": {
+    "language": "id",
+    "word_count": 77,
+    "duration_seconds": 31.32,
+    "words_per_minute": 147.5,
+    "sentence_count": 4,
+    "avg_words_per_sentence": 19.2
+  }
+}
