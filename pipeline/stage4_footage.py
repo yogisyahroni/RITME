@@ -196,6 +196,10 @@ def _download_youtube_fairuse(video_id_url: str, out_path: str) -> None:
         "outtmpl": out_path,
         "quiet": True,
         "download_ranges": yt_dlp.utils.download_range_func(None, [(30, 40)]),
+        "socket_timeout": 15,
+        "retries": 2,
+        "fragment_retries": 2,
+        "extractor_retries": 1,
     }
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         ydl.download([video_id_url])
@@ -257,7 +261,14 @@ def download_candidate(candidate: dict, dest_dir: Path = FOOTAGE_CACHE_DIR) -> O
             # It's already downloaded, url contains the absolute path
             return candidate["url"]
         elif candidate["source"] == "youtube_fairuse":
-            _download_youtube_fairuse(candidate["url"], out_path)
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+                future = ex.submit(_download_youtube_fairuse, candidate["url"], out_path)
+                try:
+                    future.result(timeout=45)  # hard cap — never blocks the job forever
+                except concurrent.futures.TimeoutError:
+                    print(f"[stage4] YouTube fair-use download timed out (>45s) for {candidate['url']}, skipping")
+                    return None
         else:
             resp = requests.get(candidate["url"], timeout=60, stream=True)
             resp.raise_for_status()
@@ -480,4 +491,3 @@ def get_clip_matcher() -> ClipMatcher:
     if _clip_matcher_singleton is None:
         _clip_matcher_singleton = ClipMatcher()
     return _clip_matcher_singleton
-
