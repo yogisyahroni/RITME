@@ -473,37 +473,7 @@ def setup_check():
 
 
 # ============================================================
-# Static file serving: outputs (video/audio previews) + frontend
-# ============================================================
-(OUTPUT_DIR / "render").mkdir(parents=True, exist_ok=True)
-app.mount("/outputs/render", StaticFiles(directory=str(OUTPUT_DIR)), name="render_output")
-app.mount("/outputs/audio", StaticFiles(directory=str(CACHE_DIR / "audio")), name="audio_output")
-app.mount("/outputs/footage", StaticFiles(directory=str(CACHE_DIR / "footage")), name="footage_output")
 
-FRONTEND_DIR = Path(__file__).parent / "frontend" / "dist"
-if FRONTEND_DIR.exists():
-    app.mount("/", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")
-else:
-    @app.get("/")
-    def frontend_missing():
-        return {
-            "error": "Frontend build not found at frontend/dist. "
-                     "See README.md 'Running the web app' section.",
-        }
-
-
-if __name__ == "__main__":
-    import uvicorn
-    print("RITME running at http://localhost:8000")
-    port = int(os.getenv("PORT", 8000))
-    uvicorn.run(app, host="0.0.0.0", port=port)
-
-
-
-
-
-
-# ============================================================
 # Timeline Export — Render edited timeline
 # ============================================================
 class TimelineSegment(BaseModel):
@@ -649,3 +619,35 @@ def timeline_preview(req: TimelineExportRequest):
         return FileResponse(output_path, media_type="video/mp4")
     else:
         raise HTTPException(500, "Preview generation failed")
+
+# Static file serving: outputs (video/audio previews) + frontend
+# ============================================================
+(OUTPUT_DIR / "render").mkdir(parents=True, exist_ok=True)
+app.mount("/outputs/render", StaticFiles(directory=str(OUTPUT_DIR)), name="render_output")
+app.mount("/outputs/audio", StaticFiles(directory=str(CACHE_DIR / "audio")), name="audio_output")
+app.mount("/outputs/footage", StaticFiles(directory=str(CACHE_DIR / "footage")), name="footage_output")
+
+FRONTEND_DIR = Path(__file__).parent / "frontend" / "dist"
+if FRONTEND_DIR.exists():
+    app.mount("/", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")
+else:
+    @app.get("/")
+    def frontend_missing():
+        return {
+            "error": "Frontend build not found at frontend/dist. "
+                     "See README.md 'Running the web app' section.",
+        }
+
+
+if __name__ == "__main__":
+    import uvicorn
+    print("RITME running at http://localhost:8000")
+    port = int(os.getenv("PORT", 8000))
+    uvicorn.run(app, host="0.0.0.0", port=port)
+
+
+
+
+
+
+# ============================================================
