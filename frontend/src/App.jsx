@@ -1005,7 +1005,7 @@ function StageFootage({ narration, footageData, setFootageData, picks, setPicks,
           {exportJob && <ProgressBar progress={exportJob.progress} message={exportJob.message} />}
           <div className="flex justify-end gap-3">
             {!exportJob && (
-              <PrimaryButton onClick={downloadProject} icon={Download}>Download Project (Edit)</PrimaryButton>
+              <PrimaryButton onClick={downloadProject} icon={Download}>Download Project (.edl / .fcpxml / .html)</PrimaryButton>
             )}
             <PrimaryButton onClick={onNext} icon={ChevronRight}>Lanjut ke Render</PrimaryButton>
           </div>
@@ -1340,4 +1340,5 @@ export default function Ritme() {
     </div>
   );
 }
+
 
