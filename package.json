@@ -87,6 +87,11 @@
       "package.json"
     ],
     "extraResources": [
+    {
+      "from": "ritme_backend",
+      "to": "ritme_backend",
+      "filter": ["**/*", "!.env"]
+    },
       {
         "from": "public/workflows",
         "to": "workflows",
@@ -196,3 +201,4 @@
     }
   }
 }
+
