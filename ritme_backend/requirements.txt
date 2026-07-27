@@ -1,0 +1,40 @@
+# --- Core / shared ---
+python-dotenv
+requests
+
+# --- Web app (server.py) ---
+fastapi
+uvicorn[standard]
+python-multipart
+
+# --- Stage 1: Template extraction ---
+scenedetect
+opencv-python-headless
+
+# --- Stage 1 & 3: Speech-to-text (word-level timestamps) ---
+faster-whisper
+
+# --- Stage 2: Research + script generation ---
+duckduckgo-search
+anthropic            # if LLM_PROVIDER=anthropic
+# openai             # if LLM_PROVIDER=openai (uncomment)
+# google-generativeai  # if LLM_PROVIDER=gemini (uncomment)
+
+# --- Stage 3: Text-to-speech ---
+pyttsx3              # free offline TTS (default)
+# elevenlabs API is called directly via `requests`, no SDK required
+
+# --- Stage 4: Footage sourcing + matching ---
+yt-dlp                # only used for confirmed Creative-Commons YouTube videos
+torch
+open_clip_torch
+pillow
+
+# --- Stage 5: Assembly ---
+moviepy>=2.0
+
+transformers  # For offline BLIP image captioning
+
+deepface  # For local face recognition
+
+TTS  # For Coqui XTTS v2 voice cloning

@@ -14,6 +14,7 @@ const ffprobeStatic = require('ffprobe-static')
 const ffprobeStaticPath = ffprobeStatic?.path || ffprobeStatic
 const {
   ComfyLauncher,
+const { initRitme, registerRitmeIpcHandlers, cleanupRitme } = require("./ritmeIntegration");
   detectLaunchersForComfyRoot,
   DEFAULT_CONFIG: DEFAULT_LAUNCHER_CONFIG,
   LAUNCHER_SETTING_KEY,
@@ -3253,6 +3254,10 @@ ipcMain.handle('window:toggleFullScreen', () => {
 
 // Register custom protocol for serving local files
 function registerFileProtocol() {
+    // Start RITME pipeline backend
+    initRitme().then((port) => {
+        if (port) console.log("[RITME] Pipeline ready on port " + port);
+    }).catch((err) => { console.error("[RITME] Init failed:", err.message); });
   protocol.handle('comfystudio', async (request) => {
     const url = request.url.replace('comfystudio://', '')
     const filePath = decodeURIComponent(url)
@@ -6465,6 +6470,7 @@ app.on('will-quit', () => {
     mcpServer.stop().catch((error) => {
       console.warn('[MCP] server shutdown error:', error?.message || error)
     })
+  cleanupRitme();
   }
 })
 

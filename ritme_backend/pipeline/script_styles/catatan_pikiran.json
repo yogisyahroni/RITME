@@ -1,0 +1,66 @@
+{
+  "style_id": "catatan_pikiran",
+  "display_name": "Catatan Pikiran (Custom Template)",
+  "description": "Gaya naskah puitis, tajam, dan reflektif khas 'Catatan Pikiran'. Menelanjangi ilusi kekuasaan dengan 8 babak struktural mulai dari narasi filosofis hingga klimaks historis.",
+  "target_duration_minutes": [15, 20],
+  "tone": "Puitis yang gelap (dark poetry), kritis tanpa sensor, filosofis, menelanjangi ilusi kekuasaan, dan tidak takut menunjuk kegagalan negara/sistem. Selalu sapa penonton dengan 'kita'.",
+  "title_guidance": "Judul dramatis, puitis, dan misterius. Gunakan format 'JEJAK DARAH DI BALIK X: Y'.",
+  "acts": [
+    {
+      "id": "intro",
+      "name": "INTRO",
+      "proportion": 0.10,
+      "narrative_function": "Wajib dibuka dengan kalimat signature: 'Bersama Catatan Pikiran, kita akan buka luas terkait keresahan-keresahan yang ada di pikiran kita. Di sini, kita bertanya, kita mencari, dan kita memahami. Kita berhenti memuja ilusi dan mulai membedah realitas yang sebenarnya, tanpa sensor, dan tanpa basa-basi.' Setelah itu perkenalkan topik tragedi secara filosofis.",
+      "visual_direction": "Visual gelap, abstrak, atau close-up benda mati yang simbolis dengan grading warna muram."
+    },
+    {
+      "id": "bab_1",
+      "name": "BAB 1: Anatomi Ritual & Awal Mula",
+      "proportion": 0.15,
+      "narrative_function": "Ceritakan kondisi awal yang damai atau makna asli sebuah simbol/hal sebelum dibajak oleh kekuasaan. Deskripsikan harmoni atau realitas yang belum terkontaminasi.",
+      "visual_direction": "Footage aktivitas sosial yang damai, budaya lokal, atau landscape alam yang tenang sebelum konflik."
+    },
+    {
+      "id": "bab_2",
+      "name": "BAB 2: Katalis Ketakutan",
+      "proportion": 0.15,
+      "narrative_function": "Jelaskan momen titik balik di mana penguasa atau sistem mulai menanamkan narasi ketakutan atau menciptakan kambing hitam demi stabilitas/legitimasi kekuasaan.",
+      "visual_direction": "Transisi ke visual yang lebih tegang, footage militer, propaganda lama, atau dokumen rahasia."
+    },
+    {
+      "id": "bab_3",
+      "name": "BAB 3: Runtuhnya Kemanusiaan",
+      "proportion": 0.15,
+      "narrative_function": "Ceritakan puncak tragedi/konflik dengan detail yang sangat raw, emosional, dan kelam. Tunjukkan bagaimana manusia bisa dengan mudah diubah menjadi eksekutor atas nama narasi palsu.",
+      "visual_direction": "Footage kekacauan, kerusuhan, api, bayangan orang berlarian, rumah hancur."
+    },
+    {
+      "id": "bab_4",
+      "name": "BAB 4: Dampak & Pengabaian",
+      "proportion": 0.15,
+      "narrative_function": "Deskripsikan aftermath-nya: lautan pengungsi, trauma, dan bagaimana negara justru membuang mereka. Kematian secara sunyi akibat kemiskinan atau penyakit karena diabaikan sistem.",
+      "visual_direction": "Kondisi kumuh, pengungsi, tatapan kosong korban, wajah anak-anak yang trauma."
+    },
+    {
+      "id": "bab_5",
+      "name": "BAB 5: Politik Lupa",
+      "proportion": 0.10,
+      "narrative_function": "Kritik secara tajam bagaimana tragedi ini sengaja dihapus dari buku sejarah demi 'stabilitas palsu'. Pertanyakan keadilan yang tak pernah datang untuk para korban.",
+      "visual_direction": "Ruang kelas kosong, arsip berdebu, atau pidato politisi yang di-mute suaranya."
+    },
+    {
+      "id": "bab_6",
+      "name": "BAB 6: Vonis di Depan Cermin",
+      "proportion": 0.10,
+      "narrative_function": "Bawa topik ke masa kini. Nyatakan bahwa tragedi ini bukan kecelakaan, melainkan desain yang menguntungkan pihak tertentu. Tantang penonton untuk menyadari bahwa racun politik/SARA yang sama masih ada saat ini.",
+      "visual_direction": "Visual kontemporer/modern, massa kampanye politik, atau cermin/kaca pecah."
+    },
+    {
+      "id": "outro",
+      "name": "OUTRO",
+      "proportion": 0.10,
+      "narrative_function": "Tutup dengan refleksi mendalam dan pertanyaan retoris yang tajam. Wajib diakhiri dengan signature closing: 'Terima kasih telah menyimak Catatan Pikiran. Teruslah bertanya, teruslah mencari, dan teruslah memahami. Karena hanya dengan menolak untuk lupa, kita bisa memastikan bahwa sejarah kelam ini tidak akan pernah lagi menjadi masa depan kita. Sampai jumpa di catatan berikutnya.'",
+      "visual_direction": "Fade to black secara perlahan. Teks kredit atau judul channel muncul."
+    }
+  ]
+}

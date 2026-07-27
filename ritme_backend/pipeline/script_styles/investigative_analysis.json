@@ -1,0 +1,45 @@
+{
+  "style_id": "investigative_analysis",
+  "display_name": "Analisis Investigatif",
+  "description": "Video esai panjang (12-15 menit) yang membedah satu isu lewat 5 babak beracak-tegang, menutup dengan pertanyaan reflektif alih-alih kesimpulan tegas. Cocok buat analisis politik/sosial/kebijakan.",
+  "target_duration_minutes": [12, 15],
+  "tone": "Investigatif dan analitis. Sapa penonton langsung (\"Anda\"/\"lo\"). Bangun ketegangan lewat pengenalan pola berulang, bukan lewat provokasi emosional murni. Hindari kesimpulan partisan yang terlalu tegas — tutup dengan pertanyaan terbuka yang bikin penonton mikir sendiri.",
+  "title_guidance": "Judul dramatis yang membingkai topik sebagai paradoks atau kebenaran tersembunyi (mis. pola 'X yang tidak Anda sadari', 'kematian senyap Y', 'siapa yang sebenarnya diuntungkan Z').",
+  "acts": [
+    {
+      "id": "hook_thesis",
+      "name": "Hook & Thesis",
+      "proportion": 0.17,
+      "narrative_function": "Buka dengan miskonsepsi umum yang dipercaya publik. Balik dengan fakta yang berlawanan sebagai thesis statement. Tutup babak ini dengan satu kalimat pembingkai yang tajam dan agak ominous.",
+      "visual_direction": "Klip berita/footage yang saling tumpang tindih atau kontradiktif, cut cepat, diakhiri jeda/hening atau layar gelap sesaat sebelum narasi thesis."
+    },
+    {
+      "id": "genesis_pattern",
+      "name": "Genesis & Pattern",
+      "proportion": 0.23,
+      "narrative_function": "Telusuri kronologi/sejarah isu ini dari titik awal sampai sekarang, lintasi beberapa periode/era. Identifikasi pola atau alasan yang terus berulang tiap kali isu ini muncul. Tutup dengan pertanyaan retoris yang menantang pola itu.",
+      "visual_direction": "Grafis timeline, penanda tahun/era, footage arsip dari tiap periode yang disebut."
+    },
+    {
+      "id": "paradox_catalyst",
+      "name": "Paradox & Catalyst",
+      "proportion": 0.23,
+      "narrative_function": "Tunjukkan kontradiksi/standar ganda — bandingkan dua hal yang seharusnya konsisten tapi ternyata tidak. Lalu perkenalkan satu konsep/mekanisme teknis inti yang menjelaskan kenapa taruhannya tinggi buat pihak-pihak tertentu.",
+      "visual_direction": "Split-screen atau perbandingan berdampingan dari dua contoh yang kontras."
+    },
+    {
+      "id": "invisible_mechanism",
+      "name": "Invisible Mechanism",
+      "proportion": 0.23,
+      "narrative_function": "Bedah BAGAIMANA mekanisme itu beroperasi di lapangan — pecah jadi beberapa komponen/pilar taktik. Beri nama pada tiap taktik. Jelaskan insentif yang mendasarinya.",
+      "visual_direction": "Infografis, diagram pilar/komponen, siluet tanpa wajah buat merepresentasikan aktor anonim."
+    },
+    {
+      "id": "projection_open_loop",
+      "name": "Projection & Open Loop",
+      "proportion": 0.14,
+      "narrative_function": "Paparkan 2-3 skenario kemungkinan ke depan (dari paling mungkin sampai paling ideal/utopis). Tutup dengan pertanyaan reflektif yang terbuka ke penonton, bukan kesimpulan yang menggurui.",
+      "visual_direction": "Gerakan kamera lambat (zoom in) ke satu objek/visual simbolis yang minimalis."
+    }
+  ]
+}

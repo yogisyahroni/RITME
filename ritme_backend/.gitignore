@@ -1,0 +1,51 @@
+# === API Keys & Secrets ===
+.env
+.env.local
+.env.production
+
+# === Python ===
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+
+# === Virtual Environments ===
+venv/
+venv_311/
+.venv/
+
+# === Cache & Output (large files) ===
+cache/footage/
+cache/audio/
+cache/uploads/
+output/
+outputs/
+
+# === Temporary files ===
+temp_*
+*.tmp
+*.wav
+*.mp4
+*.webm
+*.m4a
+
+# === IDE ===
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# === OS ===
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# === Node (frontend build) ===
+frontend/node_modules/
+frontend/dist/bundle.js
+frontend/dist/tailwind.css
