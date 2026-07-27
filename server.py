@@ -502,3 +502,150 @@ if __name__ == "__main__":
 
 
 
+
+# ============================================================
+# Timeline Export — Render edited timeline
+# ============================================================
+class TimelineSegment(BaseModel):
+    index: int
+    video_path: str
+    narration_text: str = ""
+    start_trim: float = 0.0  # seconds to trim from start of source
+    end_trim: float = 0.0    # seconds to trim from end of source
+    duration: float = 3.0    # final duration after trimming
+    keywords: list[str] = []
+
+class TimelineExportRequest(BaseModel):
+    segments: list[TimelineSegment]
+    narration_audio_path: str = ""
+    output_name: str = "ritme_timeline"
+
+
+@app.post("/api/timeline/export")
+def timeline_export(req: TimelineExportRequest):
+    import subprocess
+    import os
+    from pathlib import Path
+    
+    output_dir = Path("output")
+    output_dir.mkdir(exist_ok=True)
+    output_path = str(output_dir / f"{req.output_name}.mp4")
+    
+    # Build ffmpeg concat filter for all trimmed clips
+    filter_parts = []
+    inputs = []
+    audio_path = None
+    total_duration = 0
+    
+    for i, seg in enumerate(req.segments):
+        if not seg.video_path or not os.path.exists(seg.video_path):
+            continue
+        
+        # Calculate trim: seek to start_trim, take (duration + end_trim) seconds
+        trim_start = seg.start_trim
+        clip_duration = seg.duration
+        
+        # Input label
+        input_label = f"v{i}"
+        inputs.append(["-i", seg.video_path])
+        
+        # Trim filter
+        filter_parts.append(
+            f"[{i}:v]trim=start={trim_start}:duration={clip_duration},setpts=PTS-STARTPTS[{input_label}_v]"
+        )
+        total_duration += clip_duration
+    
+    if not filter_parts:
+        raise HTTPException(400, "No valid video segments to export")
+    
+    # Audio track from narration
+    if req.narration_audio_path and os.path.exists(req.narration_audio_path):
+        audio_path = req.narration_audio_path
+        inputs.append(["-i", audio_path])
+        # Concatenate video plus audio
+        concat_v = "".join([f"[{i}_v]" for i in range(len(req.segments))])
+        filter_complex = ";".join(filter_parts) + f";{concat_v}concat=n={len(req.segments)}:v=1:a=0[outv]"
+        
+        cmd = ["ffmpeg", "-y"]
+        for inp in inputs:
+            cmd.extend(inp)
+        cmd.extend(["-filter_complex", filter_complex, "-map", "[outv]"])
+        
+        # Map audio if we have narration
+        cmd.extend(["-map", f"{len(req.segments)}:a:0", "-c:v", "libx264", "-preset", "medium", 
+                    "-crf", "22", "-c:a", "aac", "-shortest", output_path])
+    else:
+        # Video only
+        concat_v = "".join([f"[{i}_v]" for i in range(len(req.segments))])
+        filter_complex = ";".join(filter_parts) + f";{concat_v}concat=n={len(req.segments)}:v=1:a=0[outv]"
+        
+        cmd = ["ffmpeg", "-y"]
+        for inp in inputs:
+            cmd.extend(inp)
+        cmd.extend(["-filter_complex", filter_complex, "-map", "[outv]", "-c:v", "libx264", "-preset", "medium",
+                    "-crf", "22", output_path])
+    
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+        if result.returncode != 0:
+            raise RuntimeError(f"ffmpeg error: {result.stderr[:500]}")
+    except subprocess.TimeoutExpired:
+        raise HTTPException(500, "Export timeout (>5 min)")
+    except Exception as e:
+        raise HTTPException(500, f"Export failed: {e}")
+    
+    if os.path.exists(output_path):
+        from fastapi.responses import FileResponse
+        return FileResponse(output_path, media_type="video/mp4", filename=f"{req.output_name}.mp4")
+    else:
+        raise HTTPException(500, "Output file not found")
+
+
+@app.post("/api/timeline/preview")
+def timeline_preview(req: TimelineExportRequest):
+    """Generate a low-res preview of the timeline quickly."""
+    import subprocess
+    import os
+    from pathlib import Path
+    
+    output_dir = Path("output")
+    output_dir.mkdir(exist_ok=True)
+    output_path = str(output_dir / f"{req.output_name}_preview.mp4")
+    
+    filter_parts = []
+    inputs = []
+    
+    for i, seg in enumerate(req.segments):
+        if not seg.video_path or not os.path.exists(seg.video_path):
+            continue
+        trim_start = seg.start_trim
+        clip_duration = seg.duration
+        inputs.append(["-i", seg.video_path])
+        filter_parts.append(
+            f"[{i}:v]trim=start={trim_start}:duration={clip_duration},setpts=PTS-STARTPTS,scale=640:-2[v{i}]"
+        )
+    
+    if not filter_parts:
+        raise HTTPException(400, "No valid segments")
+    
+    concat_v = "".join([f"[v{i}]" for i in range(len(req.segments))])
+    filter_complex = ";".join(filter_parts) + f";{concat_v}concat=n={len(req.segments)}:v=1:a=0,format=yuv420p[out]"
+    
+    cmd = ["ffmpeg", "-y"]
+    for inp in inputs:
+        cmd.extend(inp)
+    cmd.extend(["-filter_complex", filter_complex, "-map", "[out]", "-c:v", "libx264", "-preset", "ultrafast",
+                "-crf", "28", "-movflags", "+faststart", output_path])
+    
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+        if result.returncode != 0:
+            raise RuntimeError(f"ffmpeg preview error: {result.stderr[:300]}")
+    except Exception as e:
+        raise HTTPException(500, f"Preview failed: {e}")
+    
+    if os.path.exists(output_path):
+        from fastapi.responses import FileResponse
+        return FileResponse(output_path, media_type="video/mp4")
+    else:
+        raise HTTPException(500, "Preview generation failed")

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
+import TimelineEditor from "./TimelineEditor.jsx";
 import {
   Film, FileText, Mic, ScanSearch, Clapperboard,
   Check, Lock, RefreshCw, Download, Info, ChevronRight, Play,
@@ -218,7 +219,7 @@ const STAGES = [
   { id: 2, label: "SKRIP", icon: FileText },
   { id: 3, label: "NARASI", icon: Mic },
   { id: 4, label: "FOOTAGE", icon: ScanSearch },
-  { id: 5, label: "RENDER", icon: Clapperboard },
+  { id: 5, label: "TIMELINE", icon: Clapperboard },
 ];
 
 function StageNav({ active, setActive, maxUnlocked }) {
@@ -1329,7 +1330,7 @@ export default function Ritme() {
         {active === 2 && template && <StageScript template={template} script={script} setScript={setScript} onNext={goNext} />}
         {active === 3 && script && <StageNarration script={script} narration={narration} setNarration={setNarration} onNext={goNext} />}
         {active === 4 && narration && <StageFootage narration={narration} footageData={footageData} setFootageData={setFootageData} picks={picks} setPicks={setPicks} onNext={goNext} />}
-        {active === 5 && narration && footageData && <StageRender template={template} narration={narration} footageData={footageData} picks={picks} />}
+        {active === 5 && narration && footageData && <TimelineEditor narration={narration} footageData={footageData} picks={picks} />}
       </div>
 
       <div className="px-4 sm:px-6 py-4 text-center" style={{ borderTop: `1px solid ${C.border}` }}>
@@ -1340,5 +1341,7 @@ export default function Ritme() {
     </div>
   );
 }
+
+
 
 
