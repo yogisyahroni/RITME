@@ -5,6 +5,15 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch to build from'
+        required: true
+        default: 'velorn-integration'
+        type: choice
+        options:
+          - velorn-integration
+          - master
 
 jobs:
   build-windows:
@@ -12,6 +21,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.inputs.branch || github.ref_name }}
           lfs: false
 
       - name: Setup Node.js
