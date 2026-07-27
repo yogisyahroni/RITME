@@ -859,6 +859,48 @@ function StageNarration({ script, narration, setNarration, onNext }) {
    ============================================================ */
 function StageFootage({ narration, footageData, setFootageData, picks, setPicks, onNext }) {
   const [activeSeg, setActiveSeg] = useState(0);
+  const [exportJob, setExportJob] = useState(null);
+
+  const downloadProject = async () => {
+    try {
+      setExportJob({ progress: 10, message: 'Mempersiapkan project...' });
+      
+      const footageMap = {};
+      Object.entries(picks).forEach(([segIdx, candIdx]) => {
+        const cand = footageData[segIdx]?.candidates?.[candIdx];
+        if (cand) footageMap[segIdx] = cand;
+      });
+
+      const res = await fetch('/api/export/project', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          timed_segments: narration.segments,
+          footage_map: footageMap,
+          narration_audio_path: narration.audio_path || '',
+          output_name: 'ritme_project',
+          formats: ['edl', 'fcpxml', 'premiere_xml', 'capcut_json']
+        })
+      });
+
+      if (!res.ok) throw new Error('Export gagal');
+
+      setExportJob({ progress: 90, message: 'Mengunduh...' });
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'ritme_project.zip';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      setExportJob(null);
+    } catch (e) {
+      alert('Export gagal: ' + e.message);
+      setExportJob(null);
+    }
+  };
   const [job, setJob] = useState(null);
   const [error, setError] = useState(null);
   const cancelRef = useRef(null);
@@ -1294,3 +1336,4 @@ export default function Ritme() {
     </div>
   );
 }
+

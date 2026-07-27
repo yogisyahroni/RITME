@@ -46,7 +46,7 @@ from config import TEMPLATES_DIR, OUTPUT_DIR, CACHE_DIR
 from job_manager import job_manager
 
 
-from pipeline import stage1_template, stage2_script, stage3_narration, stage4_footage, stage5_assembly, footage_extractor
+from pipeline import stage1_template, stage2_script, stage3_narration, stage4_footage, stage5_assembly, footage_extractor, project_exporter
 
 app = FastAPI(title="RITME pipeline API")
 app.add_middleware(
@@ -394,6 +394,45 @@ def render_video(req: RenderRequest):
     except FileNotFoundError as e:
         raise HTTPException(404, str(e))
 
+
+# ============================================================
+# Project Export — Download project files for editors
+# ============================================================
+class ExportRequest(BaseModel):
+    timed_segments: list[dict]
+    footage_map: dict[str, dict]
+    narration_audio_path: str = ""
+    output_name: str = "ritme_project"
+    formats: list[str] = ["edl", "fcpxml", "premiere_xml", "capcut_json"]
+
+
+@app.post("/api/export/project")
+def export_project_endpoint(req: ExportRequest):
+    from fastapi.responses import FileResponse
+    import os
+    
+    footage_map_int = {int(k): v for k, v in req.footage_map.items() if v}
+    
+    try:
+        zip_path = project_exporter.export_project(
+            req.timed_segments, footage_map_int,
+            req.narration_audio_path, req.output_name, req.formats
+        )
+        
+        if not os.path.exists(zip_path):
+            raise HTTPException(500, f"Export failed: {zip_path} not found")
+            
+        return FileResponse(
+            zip_path,
+            media_type="application/zip",
+            filename=f"{req.output_name}_project.zip"
+        )
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(500, f"Export gagal: {e}")
+
+
     job_id = job_manager.create()
     footage_map_int = {int(k): v for k, v in req.footage_map.items() if v}
 
@@ -458,6 +497,7 @@ if __name__ == "__main__":
     print("RITME running at http://localhost:8000")
     port = int(os.getenv("PORT", 8000))
     uvicorn.run(app, host="0.0.0.0", port=port)
+
 
 
 
