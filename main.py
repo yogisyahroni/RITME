@@ -58,7 +58,7 @@ def cmd_run(args):
     timed_segments = narration["segments"]
 
     print("\n=== Stage 4: Sourcing legal footage + CLIP matching ===")
-    matcher = stage4_footage.ClipMatcher()
+    matcher = stage4_footage.get_clip_matcher()  # shared singleton — model loads once
     footage_map = {}
     for idx, seg in enumerate(timed_segments):
         print(f"  segment {idx + 1}/{len(timed_segments)}: {seg['keywords']}")

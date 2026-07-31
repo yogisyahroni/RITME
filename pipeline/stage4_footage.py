@@ -20,7 +20,16 @@ sources above, then ranked with CLIP (a joint text/image embedding
 model) so the clip whose *visual content* best matches the keyword
 phrase is chosen — not just whichever result an API happened to
 rank first.
+
+Roadmap notes (see RITME_ROADMAP.md):
+  - Fase 0: multi-frame CLIP scoring (3 frames @ 20%/50%/80% of each
+    candidate's duration, averaged), hard floor MIN_ACCEPTABLE_CLIP_SCORE
+    for auto-pick, YouTube fair-use 2-window download (10-20s & 30-40s).
+  - Fase 2: parallel source search + parallel downloads + parallel
+    per-segment matching (ThreadPoolExecutor), Wikimedia N+1 fix, and a
+    shared ClipMatcher singleton (model loaded once per process).
 """
+import concurrent.futures
 import subprocess
 from pathlib import Path
 from typing import Optional
@@ -28,7 +37,10 @@ from typing import Optional
 import requests
 
 from config import PEXELS_API_KEY, PIXABAY_API_KEY, YOUTUBE_API_KEY, \
-    FOOTAGE_CACHE_DIR, CLIP_MODEL_NAME, CLIP_PRETRAINED
+    FOOTAGE_CACHE_DIR, CLIP_MODEL_NAME, CLIP_PRETRAINED, \
+    MIN_ACCEPTABLE_CLIP_SCORE, CLIP_SAMPLE_FRAMES, LOCAL_GOOD_SCORE, \
+    YOUTUBE_FAIRUSE_WINDOWS, STAGE4_SEARCH_WORKERS, \
+    STAGE4_DOWNLOAD_WORKERS, STAGE4_SEGMENT_WORKERS
 
 
 # ---------------------------------------------------------------------------
@@ -100,26 +112,36 @@ def search_wikimedia(query: str, limit: int = 5) -> list[dict]:
         timeout=20,
     )
     resp.raise_for_status()
+    titles = [item["title"] for item in resp.json().get("query", {}).get("search", [])]
+    if not titles:
+        return []
+
+    # Fase 2.2 (N+1 fix): ONE imageinfo request for ALL titles, pipe-separated
+    # (Wikimedia API supports up to 50 titles per request) instead of one
+    # request per search result.
+    info_resp = requests.get(
+        "https://commons.wikimedia.org/w/api.php",
+        params={
+            "action": "query", "format": "json",
+            "titles": "|".join(titles),
+            "prop": "imageinfo", "iiprop": "url",
+        },
+        timeout=20,
+    )
+    info_resp.raise_for_status()
     candidates = []
-    for item in resp.json().get("query", {}).get("search", []):
-        title = item["title"]  # e.g. "File:Some_video.webm"
-        info_resp = requests.get(
-            "https://commons.wikimedia.org/w/api.php",
-            params={"action": "query", "format": "json", "titles": title,
-                    "prop": "imageinfo", "iiprop": "url"},
-            timeout=20,
-        )
-        pages = info_resp.json().get("query", {}).get("pages", {})
-        for page in pages.values():
-            info = page.get("imageinfo", [{}])[0]
-            if info.get("url"):
-                candidates.append({
-                    "source": "wikimedia",
-                    "id": title,
-                    "url": info["url"],
-                    "preview_image": None,
-                    "duration": None,
-                })
+    pages = info_resp.json().get("query", {}).get("pages", {})
+    for page in pages.values():
+        title = page.get("title", "")
+        info = page.get("imageinfo", [{}])[0]
+        if info.get("url"):
+            candidates.append({
+                "source": "wikimedia",
+                "id": title,
+                "url": info["url"],
+                "preview_image": None,
+                "duration": None,
+            })
     return candidates
 
 
@@ -152,12 +174,13 @@ def search_archive_org(query: str, limit: int = 5) -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
-# Source 5: YouTube — All Videos (Fair Use)
+# Source 5: YouTube — Fair-use window download
 # ---------------------------------------------------------------------------
 def search_youtube(query: str, max_results: int = 5) -> list[dict]:
     """
     Searches YouTube via the official Data API without videoLicense restrictions.
-    Downloading is done separately via yt-dlp, restricted to 10 seconds for Fair Use.
+    Downloading is done separately via yt-dlp, restricted to short fair-use
+    windows (see YOUTUBE_FAIRUSE_WINDOWS in config.py).
     """
     if not YOUTUBE_API_KEY:
         return []
@@ -184,18 +207,19 @@ def search_youtube(query: str, max_results: int = 5) -> list[dict]:
     return candidates
 
 
-def _download_youtube_fairuse(video_id_url: str, out_path: str) -> None:
-    """Download a 10-second chunk (00:30-00:40) of a YouTube video via yt-dlp for Fair Use."""
+def _download_youtube_fairuse(video_id_url: str, out_path: str, window: tuple[int, int]) -> None:
+    """Download a short window [start, end] of a YouTube video via yt-dlp."""
     try:
         import yt_dlp
     except ImportError:
         raise RuntimeError("Run: pip install yt-dlp")
 
+    start, end = window
     ydl_opts = {
         "format": "best[height<=1080]",
         "outtmpl": out_path,
         "quiet": True,
-        "download_ranges": yt_dlp.utils.download_range_func(None, [(30, 40)]),
+        "download_ranges": yt_dlp.utils.download_range_func(None, [(start, end)]),
         "socket_timeout": 15,
         "retries": 2,
         "fragment_retries": 2,
@@ -238,43 +262,72 @@ def search_local_footage(query: str, limit: int = 5) -> list[dict]:
     # Return at most 'limit' local candidates to avoid overwhelming CLIP
     return candidates[:limit]
 
+
+# Fase 2.1: run the internet source searches in parallel — they are
+# independent I/O-bound HTTP calls.
+_INTERNET_SEARCH_FNS = (search_pexels, search_pixabay, search_wikimedia, search_archive_org, search_youtube)
+
+
 def search_all_sources(query: str, per_source: int = 4) -> list[dict]:
     candidates = []
-    for fn in (search_local_footage, search_pexels, search_pixabay, search_wikimedia, search_archive_org, search_youtube):
-        try:
-            candidates.extend(fn(query, per_source))
-        except Exception as e:
-            print(f"[stage4] {fn.__name__} failed for '{query}': {e}")
+    with concurrent.futures.ThreadPoolExecutor(max_workers=min(STAGE4_SEARCH_WORKERS, len(_INTERNET_SEARCH_FNS))) as ex:
+        futures = {ex.submit(fn, query, per_source): fn.__name__ for fn in _INTERNET_SEARCH_FNS}
+        for future in concurrent.futures.as_completed(futures):
+            name = futures[future]
+            try:
+                candidates.extend(future.result())
+            except Exception as e:
+                print(f"[stage4] {name} failed for '{query}': {e}")
     return candidates
 
 
-def download_candidate(candidate: dict, dest_dir: Path = FOOTAGE_CACHE_DIR) -> Optional[str]:
-    dest_dir.mkdir(parents=True, exist_ok=True)
-    ext = "mp4"
-    out_path = str(dest_dir / f"{candidate['source']}_{candidate['id']}.{ext}")
+def download_candidate(candidate: dict, dest_dir: Path = FOOTAGE_CACHE_DIR) -> Optional[str | list[str]]:
+    """
+    Download a candidate to the footage cache.
 
+    Returns:
+      - str: path to the downloaded file (single-window sources)
+      - list[str]: one path per fair-use window (youtube_fairuse sources —
+        each window is scored separately so CLIP can pick the better one)
+      - None: download failed/skipped
+    """
+    dest_dir.mkdir(parents=True, exist_ok=True)
+
+    if candidate["source"] == "local":
+        # Already on disk; url contains the absolute path.
+        return candidate["url"]
+
+    if candidate["source"] == "youtube_fairuse":
+        # Fase 0: download BOTH fair-use windows, score them as independent
+        # candidates so a bad first 10s can't sink a good video.
+        paths = []
+        for i, (start, end) in enumerate(YOUTUBE_FAIRUSE_WINDOWS):
+            out_path = str(dest_dir / f"{candidate['source']}_{candidate['id']}_w{i + 1}_{start}_{end}.mp4")
+            if Path(out_path).exists():
+                paths.append(out_path)
+                continue
+            try:
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+                    future = ex.submit(_download_youtube_fairuse, candidate["url"], out_path, (start, end))
+                    try:
+                        future.result(timeout=45)  # hard cap per window — never blocks the job forever
+                        paths.append(out_path)
+                    except concurrent.futures.TimeoutError:
+                        print(f"[stage4] YouTube fair-use window {start}-{end}s timed out (>45s) for {candidate['url']}, skipping")
+            except Exception as e:
+                print(f"[stage4] YouTube fair-use window {start}-{end}s failed for {candidate['url']}: {e}")
+        return paths or None
+
+    out_path = str(dest_dir / f"{candidate['source']}_{candidate['id']}.mp4")
     if Path(out_path).exists():
         return out_path
 
     try:
-        if candidate["source"] == "local":
-            # It's already downloaded, url contains the absolute path
-            return candidate["url"]
-        elif candidate["source"] == "youtube_fairuse":
-            import concurrent.futures
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
-                future = ex.submit(_download_youtube_fairuse, candidate["url"], out_path)
-                try:
-                    future.result(timeout=45)  # hard cap — never blocks the job forever
-                except concurrent.futures.TimeoutError:
-                    print(f"[stage4] YouTube fair-use download timed out (>45s) for {candidate['url']}, skipping")
-                    return None
-        else:
-            resp = requests.get(candidate["url"], timeout=60, stream=True)
-            resp.raise_for_status()
-            with open(out_path, "wb") as f:
-                for chunk in resp.iter_content(chunk_size=1 << 16):
-                    f.write(chunk)
+        resp = requests.get(candidate["url"], timeout=60, stream=True)
+        resp.raise_for_status()
+        with open(out_path, "wb") as f:
+            for chunk in resp.iter_content(chunk_size=1 << 16):
+                f.write(chunk)
         return out_path
     except Exception as e:
         print(f"[stage4] Download failed for {candidate['source']}:{candidate['id']}: {e}")
@@ -284,6 +337,21 @@ def download_candidate(candidate: dict, dest_dir: Path = FOOTAGE_CACHE_DIR) -> O
 # ---------------------------------------------------------------------------
 # CLIP-based semantic matching
 # ---------------------------------------------------------------------------
+def _get_video_duration(video_path: str) -> float:
+    """Best-effort duration lookup via ffprobe; 0.0 on any failure."""
+    try:
+        result = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+             "-of", "csv=p=0", video_path],
+            capture_output=True, text=True, timeout=20,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return max(float(result.stdout.strip()), 0.0)
+    except Exception:
+        pass
+    return 0.0
+
+
 def _extract_sample_frame(video_path: str, out_image: str, at_second: float = 1.0) -> bool:
     result = subprocess.run(
         ["ffmpeg", "-y", "-ss", str(at_second), "-i", video_path,
@@ -293,12 +361,43 @@ def _extract_sample_frame(video_path: str, out_image: str, at_second: float = 1.
     return result.returncode == 0 and Path(out_image).exists()
 
 
+def _extract_sample_frames(video_path: str, n_frames: int = CLIP_SAMPLE_FRAMES) -> list[tuple[str, float]]:
+    """
+    Fase 0: sample N frames spread across the clip (20%/50%/80% of duration by
+    default) instead of a single frame at second 1.0. The middle frame is
+    additionally saved as "<video>.sample.jpg" — the thumbnail the web UI
+    serves — so the preview grid keeps working unchanged.
+
+    Returns [(frame_path, at_second), ...] for the frames that were extracted.
+    """
+    duration = _get_video_duration(video_path)
+    if duration <= 0:
+        duration = 10.0  # unknown duration — fall back to absolute offsets
+
+    offsets = []
+    for i in range(max(n_frames, 1)):
+        frac = (i + 1) / (max(n_frames, 1) + 1)  # e.g. 3 frames -> 0.25/0.5/0.75
+        offsets.append(duration * frac)
+
+    frames = []
+    for i, at in enumerate(offsets):
+        is_mid = (i == len(offsets) // 2)
+        out_image = video_path + (".sample.jpg" if is_mid else f".sample_{i}.jpg")
+        if _extract_sample_frame(video_path, out_image, at_second=round(at, 3)):
+            frames.append((out_image, at))
+    return frames
+
+
 class ClipMatcher:
     """Lazily loads a CLIP model to rank downloaded clips against a text keyword.
     Auto-detects and uses a GPU (CUDA, or Apple Silicon MPS) when available,
     falling back to CPU otherwise — this is the most compute-heavy stage in
     the pipeline (one CLIP forward pass per candidate frame per keyword), so
-    it's the one most worth accelerating."""
+    it's the one most worth accelerating.
+
+    One instance is shared across the whole job (and, via get_clip_matcher(),
+    across jobs) — the model lives in memory once.
+    """
 
     def __init__(self, model_name: str = CLIP_MODEL_NAME, pretrained: str = CLIP_PRETRAINED, device: str | None = None):
         self.model_name = model_name
@@ -350,7 +449,13 @@ class ClipMatcher:
     def rank_all(self, keyword: str, candidate_video_paths: list[str]) -> list[tuple[str, float]]:
         """Returns [(video_path, score), ...] for every candidate that could be
         scored, sorted best-first. Used when a human should review multiple
-        options rather than just getting the single auto-pick."""
+        options rather than just getting the single auto-pick.
+
+        Fase 0: each candidate is scored on CLIP_SAMPLE_FRAMES frames sampled
+        across its duration (20%/50%/80% by default) and the scores averaged —
+        a clip whose second half matches the keyword no longer loses to one
+        whose first second happens to match.
+        """
         self._lazy_load()
         from PIL import Image
 
@@ -361,18 +466,22 @@ class ClipMatcher:
 
         scored = []
         for video_path in candidate_video_paths:
-            frame_path = video_path + ".sample.jpg"
-            if not _extract_sample_frame(video_path, frame_path):
+            frames = _extract_sample_frames(video_path, n_frames=CLIP_SAMPLE_FRAMES)
+            if not frames:
+                # No frame could be extracted (corrupt file?) — skip it.
                 continue
-            try:
-                image = self._preprocess(Image.open(frame_path)).unsqueeze(0).to(self.device)
-                with self._torch.no_grad():
-                    image_features = self._model.encode_image(image)
-                    image_features /= image_features.norm(dim=-1, keepdim=True)
-                    score = (image_features @ text_features.T).item()
-                scored.append((video_path, score))
-            except Exception as e:
-                print(f"[stage4] CLIP scoring failed for {video_path}: {e}")
+            frame_scores = []
+            for frame_path, _at in frames:
+                try:
+                    image = self._preprocess(Image.open(frame_path)).unsqueeze(0).to(self.device)
+                    with self._torch.no_grad():
+                        image_features = self._model.encode_image(image)
+                        image_features /= image_features.norm(dim=-1, keepdim=True)
+                        frame_scores.append((image_features @ text_features.T).item())
+                except Exception as e:
+                    print(f"[stage4] CLIP scoring failed for {frame_path}: {e}")
+            if frame_scores:
+                scored.append((video_path, sum(frame_scores) / len(frame_scores)))
 
         scored.sort(key=lambda x: x[1], reverse=True)
         return scored
@@ -385,53 +494,68 @@ def get_ranked_candidates_for_segment(keywords: list[str], matcher: ClipMatcher,
     (not just the single auto-pick) so a human can review and override the
     choice — this is what powers the web UI's footage matching board.
     Each dict: {"video_path", "keyword_used", "score", "source"}, best first.
+
+    Fase 2.1: internet searches and downloads run in parallel across sources.
     """
     all_scored = []
     seen_paths = set()
 
+    def _record(candidate_meta: dict, path: str, keyword: str, score: float):
+        all_scored.append({
+            "video_path": path,
+            "keyword_used": keyword,
+            "score": round(score, 4),
+            "source": candidate_meta["source"],
+            "url": candidate_meta.get("url"),
+            "preview_image": candidate_meta.get("preview_image"),
+        })
+
     for keyword in keywords:
-        # Prioritize local footage first
+        # Prioritize local footage first (no network cost).
         local_candidates = search_local_footage(keyword, limit=per_source * 2)
         local_downloaded = []
         for c in local_candidates:
             path = download_candidate(c)
-            if path and path not in seen_paths:
-                local_downloaded.append((path, c))
-                seen_paths.add(path)
+            paths = path if isinstance(path, list) else [path]
+            for p in paths:
+                if p and p not in seen_paths:
+                    local_downloaded.append((p, c))
+                    seen_paths.add(p)
 
         local_good = False
         if local_downloaded:
             ranked = matcher.rank_all(keyword, [p for p, _ in local_downloaded])
             for path, score in ranked:
                 source_meta = next(c for p, c in local_downloaded if p == path)
-                all_scored.append({
-                    "video_path": path,
-                    "keyword_used": keyword,
-                    "score": round(score, 4),
-                    "source": source_meta["source"],
-                    "url": source_meta.get("url"),
-                    "preview_image": source_meta.get("preview_image"),
-                })
-                # If CLIP score is good enough (>0.21 is typically a solid match), we skip internet search for this keyword
-                if score >= 0.21:
+                _record(source_meta, path, keyword, score)
+                # If CLIP score is good enough, skip internet search for this keyword.
+                if score >= LOCAL_GOOD_SCORE:
                     local_good = True
-        
-        # If we didn't find any good local footage, fall back to internet sources
+
+        # If we didn't find any good local footage, fall back to internet sources.
         if not local_good:
-            internet_fns = (search_pexels, search_pixabay, search_wikimedia, search_archive_org, search_youtube)
-            candidates = []
-            for fn in internet_fns:
-                try:
-                    candidates.extend(fn(keyword, per_source))
-                except Exception as e:
-                    print(f"[stage4] {fn.__name__} failed for '{keyword}': {e}")
-                    
+            candidates = search_all_sources(keyword, per_source)
+
             downloaded = []
-            for c in candidates:
+            seen_lock = __import__("threading").Lock()
+
+            def _download_one(c):
                 path = download_candidate(c)
-                if path and path not in seen_paths:
-                    downloaded.append((path, c))
-                    seen_paths.add(path)
+                if path is None:
+                    return None
+                return [(p, c) for p in (path if isinstance(path, list) else [path])]
+
+            with concurrent.futures.ThreadPoolExecutor(max_workers=STAGE4_DOWNLOAD_WORKERS) as ex:
+                futures = [ex.submit(_download_one, c) for c in candidates]
+                for future in concurrent.futures.as_completed(futures):
+                    try:
+                        for p, c in future.result() or []:
+                            with seen_lock:
+                                if p and p not in seen_paths:
+                                    seen_paths.add(p)
+                                    downloaded.append((p, c))
+                    except Exception as e:
+                        print(f"[stage4] parallel download error: {e}")
 
             if not downloaded:
                 continue
@@ -439,14 +563,7 @@ def get_ranked_candidates_for_segment(keywords: list[str], matcher: ClipMatcher,
             ranked = matcher.rank_all(keyword, [p for p, _ in downloaded])
             for path, score in ranked:
                 source_meta = next(c for p, c in downloaded if p == path)
-                all_scored.append({
-                    "video_path": path,
-                    "keyword_used": keyword,
-                    "score": round(score, 4),
-                    "source": source_meta["source"],
-                    "url": source_meta.get("url"),
-                    "preview_image": source_meta.get("preview_image"),
-                })
+                _record(source_meta, path, keyword, score)
 
     all_scored.sort(key=lambda c: c["score"], reverse=True)
     return all_scored[:top_n]
@@ -455,6 +572,10 @@ def get_ranked_candidates_for_segment(keywords: list[str], matcher: ClipMatcher,
 def find_footage_for_segment(keywords: list[str], matcher: ClipMatcher, per_source: int = 3) -> Optional[dict]:
     """
     CLI-friendly convenience wrapper: returns just the single best match.
+
+    Fase 0: enforces the MIN_ACCEPTABLE_CLIP_SCORE hard floor — if the best
+    candidate doesn't clear it, None is returned so the caller can render a
+    filler/black segment instead of footage that doesn't visually match.
     (The web UI uses get_ranked_candidates_for_segment instead, so a human
     can review/override the pick.)
     """
@@ -462,7 +583,12 @@ def find_footage_for_segment(keywords: list[str], matcher: ClipMatcher, per_sour
     if not ranked:
         print(f"[stage4] No footage found for any of: {keywords}")
         return None
-    return ranked[0]
+    best = ranked[0]
+    if best["score"] < MIN_ACCEPTABLE_CLIP_SCORE:
+        print(f"[stage4] Best match for {keywords} scored {best['score']:.3f} < "
+              f"MIN_ACCEPTABLE_CLIP_SCORE ({MIN_ACCEPTABLE_CLIP_SCORE}) — rejecting weak match.")
+        return None
+    return best
 
 
 def match_all_segments(segments: list[dict], on_progress=None, top_n: int = 4) -> dict[int, list[dict]]:
@@ -472,15 +598,39 @@ def match_all_segments(segments: list[dict], on_progress=None, top_n: int = 4) -
     so a caller (e.g. the web API's job manager) can report real progress
     instead of a fake animated bar.
     Returns {segment_index: [ranked candidate dicts, best first, possibly empty]}
+
+    Fase 2.3: segments are matched in parallel (STAGE4_SEGMENT_WORKERS
+    concurrent workers) sharing the single ClipMatcher instance — each
+    segment's search/download is independent.
     """
-    matcher = get_clip_matcher()
-    results = {}
+    matcher = get_clip_matcher()  # shared singleton — model loaded once
     total = len(segments)
-    for i, seg in enumerate(segments):
-        results[i] = get_ranked_candidates_for_segment(seg["keywords"], matcher, per_source=3, top_n=top_n)
-        if on_progress:
-            on_progress(i + 1, total, seg)
+    if total == 0:
+        return {}
+
+    results: dict[int, list[dict]] = {}
+    progress_lock = __import__("threading").Lock()
+    done_count = [0]
+
+    def _match_one(idx: int, seg: dict):
+        ranked = get_ranked_candidates_for_segment(seg["keywords"], matcher, per_source=3, top_n=top_n)
+        with progress_lock:
+            results[idx] = ranked
+            done_count[0] += 1
+            if on_progress:
+                on_progress(done_count[0], total, seg)
+
+    workers = max(1, min(STAGE4_SEGMENT_WORKERS, total))
+    with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as ex:
+        futures = [ex.submit(_match_one, i, seg) for i, seg in enumerate(segments)]
+        for future in concurrent.futures.as_completed(futures):
+            try:
+                future.result()
+            except Exception as e:
+                print(f"[stage4] segment matching failed: {e}")
+
     return results
+
 
 # Module-level singleton for CLIP matcher (avoids reloading model on every job)
 _clip_matcher_singleton = None

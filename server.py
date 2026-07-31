@@ -288,7 +288,9 @@ async def extract_youtube_footage(req: YoutubeExtractRequest):
     import uuid
     import yt_dlp
     
-    _validate_upload(video, ALLOWED_VIDEO_TYPES)
+    if not req.youtube_url.strip():
+        raise HTTPException(400, "youtube_url wajib diisi")
+    
     dest = UPLOADS_DIR / f"{uuid.uuid4().hex}_youtube.mp4"
     
     job_id = job_manager.create()
@@ -385,6 +387,7 @@ class RenderRequest(BaseModel):
     footage_map: dict[str, dict]  # segment index (as string) -> match dict
     narration_audio_path: str
     output_name: str = "final_output"
+    music_path: str | None = None  # explicit music file; None = auto-pick from music/ by script mood
 
 
 @app.post("/api/render")
@@ -393,6 +396,23 @@ def render_video(req: RenderRequest):
         template = stage1_template.load_template(req.template_name)
     except FileNotFoundError as e:
         raise HTTPException(404, str(e))
+
+    job_id = job_manager.create()
+    footage_map_int = {int(k): v for k, v in req.footage_map.items() if v}
+
+    def _run(job_id):
+        def on_progress(pct, message):
+            job_manager.update(job_id, progress=pct, message=message)
+
+        out_path = stage5_assembly.assemble_video(
+            req.timed_segments, footage_map_int, req.narration_audio_path, template,
+            output_name=req.output_name, on_progress=on_progress,
+            music_path=req.music_path,
+        )
+        return {"output_path": out_path, "output_url": f"/outputs/render/{Path(out_path).name}"}
+
+    job_manager.run_async(job_id, _run)
+    return {"job_id": job_id}
 
 
 # ============================================================
@@ -431,23 +451,6 @@ def export_project_endpoint(req: ExportRequest):
         import traceback
         traceback.print_exc()
         raise HTTPException(500, f"Export gagal: {e}")
-
-
-    job_id = job_manager.create()
-    footage_map_int = {int(k): v for k, v in req.footage_map.items() if v}
-
-    def _run(job_id):
-        def on_progress(pct, message):
-            job_manager.update(job_id, progress=pct, message=message)
-
-        out_path = stage5_assembly.assemble_video(
-            req.timed_segments, footage_map_int, req.narration_audio_path, template,
-            output_name=req.output_name, on_progress=on_progress,
-        )
-        return {"output_path": out_path, "output_url": f"/outputs/render/{Path(out_path).name}"}
-
-    job_manager.run_async(job_id, _run)
-    return {"job_id": job_id}
 
 
 # ============================================================

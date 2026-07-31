@@ -401,6 +401,10 @@ def align_keywords_to_timestamps(script_segments: list[dict], word_timestamps: l
 
     This is a sequential word-count alignment rather than fuzzy text
     matching, which keeps it robust to minor TTS pronunciation differences.
+
+    Roadmap Fase 1.1: each aligned segment also carries the per-word
+    timestamps that belong to it (`seg["words"]`) — Stage 5 uses them to
+    render karaoke/word-highlight captions synced to the actual speech.
     """
     aligned = []
     word_cursor = 0
@@ -413,15 +417,21 @@ def align_keywords_to_timestamps(script_segments: list[dict], word_timestamps: l
             # ran out of transcribed words (e.g. TTS dropped some) — estimate
             start = aligned[-1]["end"] if aligned else 0.0
             end = start + max(seg_word_count * 0.4, 1.0)  # ~150wpm fallback
+            words = []
         else:
             start = seg_words[0]["start"]
             end = seg_words[-1]["end"]
+            words = [
+                {"word": w["word"], "start": round(w["start"], 3), "end": round(w["end"], 3)}
+                for w in seg_words
+            ]
 
         aligned.append({
             **seg,
             "start": round(start, 3),
             "end": round(end, 3),
             "duration": round(end - start, 3),
+            "words": words,
         })
         word_cursor += seg_word_count
 
