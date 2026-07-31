@@ -105,6 +105,7 @@ For EACH segment provide:
 
 Respond ONLY with valid JSON in this exact shape, no other text:
 {{
+  "music_mood": "<one of: upbeat, calm, tense, epic, sad — the background-music mood that fits this script>",
   "segments": [
     {{"text": "...", "keywords": ["...", "..."]}},
     ...
@@ -206,6 +207,7 @@ Untuk TIAP segmen berikan:
 
 Jawab HANYA dengan JSON valid, format persis:
 {{
+  "music_mood": "<salah satu dari: upbeat, calm, tense, epic, sad — mood musik latar yang cocok untuk naskah ini>",
   "segments": [
     {{"act": "{act['id']}", "text": "...", "keywords": ["...", "..."]}},
     ...
@@ -265,6 +267,7 @@ For EACH segment provide:
 
 Respond ONLY with valid JSON in this exact shape, no other text:
 {{
+  "music_mood": "<one of: upbeat, calm, tense, epic, sad — the background-music mood that fits this script>",
   "segments": [
     {{"text": "...", "keywords": ["...", "..."]}},
     ...
@@ -317,6 +320,7 @@ Untuk TIAP segmen berikan:
 
 Jawab HANYA dengan JSON valid, format persis:
 {{
+  "music_mood": "<salah satu dari: upbeat, calm, tense, epic, sad — mood musik latar yang cocok untuk naskah ini>",
   "segments": [
     {{"act": "custom", "text": "...", "keywords": ["...", "..."]}},
     ...
@@ -343,6 +347,7 @@ def generate_script(topic: str, template: dict, target_segments: int = 8,
 
     segments = []
     previous_context = []
+    music_mood = None
 
     if custom_script:
         # Bypass template pacing completely, chunk the script text and extract segments exactly
@@ -351,7 +356,9 @@ def generate_script(topic: str, template: dict, target_segments: int = 8,
             print(f"[stage2] Generating script chunk {i+1}/{len(chunks)} from custom script...")
             prompt = _build_exact_script_prompt(text_chunk, language)
             text = call_provider(prompt)
-            new_segs = _parse_json_segments(text)
+            new_segs, meta = _parse_json_response(text)
+            if music_mood is None and isinstance(meta.get("music_mood"), str) and meta["music_mood"]:
+                music_mood = meta["music_mood"]
             
             for s in new_segs:
                 if "act" not in s:
@@ -370,7 +377,9 @@ def generate_script(topic: str, template: dict, target_segments: int = 8,
                     print(f"[stage2] Generating script chunk for Act: {act['name']} ({c} segments)...")
                     prompt = _build_styled_chunk_prompt(topic, sources, template, style, act, c, previous_context, language, custom_script, target_segments)
                     text = call_provider(prompt)
-                    new_segs = _parse_json_segments(text)
+                    new_segs, meta = _parse_json_response(text)
+                    if music_mood is None and isinstance(meta.get("music_mood"), str) and meta["music_mood"]:
+                        music_mood = meta["music_mood"]
                     
                     for s in new_segs:
                         s["act"] = act["id"]
@@ -392,7 +401,9 @@ def generate_script(topic: str, template: dict, target_segments: int = 8,
                 print(f"[stage2] Generating script chunk {chunk_idx}/{len(chunks)} ({c} segments)...")
                 prompt = _build_chunk_prompt(topic, sources, template, c, previous_context, chunk_idx, len(chunks), language, custom_script)
                 text = call_provider(prompt)
-                new_segs = _parse_json_segments(text)
+                new_segs, meta = _parse_json_response(text)
+                if music_mood is None and isinstance(meta.get("music_mood"), str) and meta["music_mood"]:
+                    music_mood = meta["music_mood"]
                 segments.extend(new_segs)
                 
                 if new_segs:
@@ -402,7 +413,20 @@ def generate_script(topic: str, template: dict, target_segments: int = 8,
         print(f"[stage2] WARNING: asked for {target_segments} segments, "
               f"LLM returned {len(segments)}.")
 
-    result = {"topic": topic, "sources": sources, "segments": segments, "style_id": style_id}
+    # Fase 1.2: fall back to a keyword heuristic when the LLM didn't say.
+    if music_mood is None:
+        try:
+            from pipeline.stage_music import guess_music_mood
+            music_mood = guess_music_mood(" ".join(str(s.get("text", "")) for s in segments))
+        except Exception:
+            music_mood = "calm"
+        print(f"[stage2] LLM didn't provide music_mood — heuristic picked '{music_mood}'.")
+
+    for s in segments:
+        s["music_mood"] = music_mood
+
+    result = {"topic": topic, "sources": sources, "segments": segments,
+              "style_id": style_id, "music_mood": music_mood}
 
     slug = re.sub(r"[^a-z0-9]+", "-", topic.lower()).strip("-")
     out_path = Path("templates") / f"{slug}_script.json"
@@ -412,7 +436,12 @@ def generate_script(topic: str, template: dict, target_segments: int = 8,
     return result
 
 
-def _parse_json_segments(text: str) -> list[dict]:
+def _parse_json_response(text: str) -> tuple[list[dict], dict]:
+    """
+    Parse LLM output into (segments, meta). `meta` carries script-level
+    fields the LLM may add — today that's `music_mood` (Fase 1.2: the
+    background-music mood fitting this script).
+    """
     if text is None:
         raise RuntimeError("Gagal mendapatkan respons dari AI (kemungkinan terkena Safety Filter atau jaringan terputus). Silakan coba lagi.")
     # Strip <think> blocks if present (from models like DeepSeek R1)
@@ -428,8 +457,12 @@ def _parse_json_segments(text: str) -> list[dict]:
         
     try:
         data = json.loads(cleaned)
-        return data["segments"]
-    except (json.JSONDecodeError, KeyError) as e:
+        segments = data.get("segments", [])
+        if not isinstance(segments, list):
+            raise ValueError("'segments' key missing or not a list")
+        meta = {k: v for k, v in data.items() if k != "segments"}
+        return segments, meta
+    except (json.JSONDecodeError, KeyError, ValueError) as e:
         if "User Safety" in text or "safety" in text.lower():
             raise RuntimeError(
                 f"Topik ini ditolak oleh filter keamanan (Safety Filter) dari AI. "
@@ -440,6 +473,12 @@ def _parse_json_segments(text: str) -> list[dict]:
             f"Could not parse LLM output as the expected JSON shape: {e}\n"
             f"Raw output:\n{text}"
         )
+
+
+def _parse_json_segments(text: str) -> list[dict]:
+    """Backward-compatible wrapper: segments only."""
+    segments, _meta = _parse_json_response(text)
+    return segments
 
 
 def _call_anthropic(prompt: str) -> str:

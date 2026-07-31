@@ -1,0 +1,489 @@
+"""
+RITME roadmap verification suite — Fase 0 + Fase 1 + Fase 2.
+
+Plain-Python (no pytest dependency). Run:
+    venv_311/Scripts/python.exe tests/test_roadmap_features.py [--with-clip] [--with-server]
+
+Covers:
+  Fase 0: multi-frame CLIP sampling, MIN_ACCEPTABLE_CLIP_SCORE floor,
+          YouTube 2-window fair-use download
+  Fase 1: karaoke captions (1.1), music + ducking (1.2), crossfades (1.3),
+          Ken Burns (1.4), caption styling (1.5)
+  Fase 2: parallel stage4 helpers (2.1/2.3), Wikimedia N+1 fix (2.2),
+          ClipMatcher singleton reuse (2.4)
+  Bugs:  /api/render endpoint actually renders (regression for the dead-code bug)
+"""
+import json
+import os
+import subprocess
+import sys
+import tempfile
+import time
+import wave
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+os.chdir(ROOT)
+
+sys.stdout.reconfigure(encoding="utf-8")
+
+PASSED = []
+FAILED = []
+
+
+def check(name, ok, detail=""):
+    if ok:
+        PASSED.append(name)
+        print(f"  PASS  {name}{' — ' + detail if detail else ''}")
+    else:
+        FAILED.append(name)
+        print(f"  FAIL  {name}{' — ' + detail if detail else ''}")
+
+
+def run(cmd, timeout=120):
+    return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+
+
+def make_test_video(path: Path, color: str, duration: float = 4.0, size="360x640"):
+    """Synthetic test footage via ffmpeg lavfi."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    r = run([
+        "ffmpeg", "-y", "-loglevel", "error",
+        "-f", "lavfi", "-i", f"color=c={color}:d={duration}:s={size}:r=30",
+        "-pix_fmt", "yuv420p", str(path),
+    ])
+    assert r.returncode == 0, r.stderr
+    return path
+
+
+def make_test_audio(path: Path, freq: int, duration: float):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    r = run([
+        "ffmpeg", "-y", "-loglevel", "error",
+        "-f", "lavfi", "-i", f"sine=frequency={freq}:duration={duration}",
+        str(path),
+    ])
+    assert r.returncode == 0, r.stderr
+    return path
+
+
+def probe_duration(path: str) -> float:
+    r = run(["ffprobe", "-v", "error", "-show_entries", "format=duration",
+             "-of", "csv=p=0", path])
+    return float(r.stdout.strip())
+
+
+def probe_audio_streams(path: str) -> int:
+    r = run(["ffprobe", "-v", "error", "-select_streams", "a",
+             "-show_entries", "stream=index", "-of", "csv=p=0", path])
+    return len([l for l in r.stdout.strip().splitlines() if l])
+
+
+def sample_wav_rms(path: str, start_s: float, end_s: float) -> float:
+    """RMS of a wav slice via ffmpeg -> raw s16le -> numpy."""
+    import numpy as np
+    r = subprocess.run([
+        "ffmpeg", "-v", "error", "-ss", str(start_s), "-t", str(end_s - start_s),
+        "-i", str(path), "-f", "s16le", "-ac", "1", "-ar", "8000", "-",
+    ], capture_output=True, timeout=60)  # text=False: need raw bytes
+    if r.returncode != 0 or not r.stdout:
+        return 0.0
+    samples = np.frombuffer(r.stdout, dtype=np.int16).astype(np.float64)
+    return float(np.sqrt(np.mean(samples ** 2))) if samples.size else 0.0
+
+
+def make_timed_segments():
+    """3 segments, 3.0/3.0/2.5s with fabricated per-word timestamps."""
+    segs = []
+    texts = ["Selamat pagi dunia hari ini", "Ini adalah video percobaan kedua", "Terima kasih sudah menonton"]
+    cursor = 0.0
+    for ti, text in enumerate(texts):
+        words = text.split()
+        word_ts = []
+        t = cursor
+        for w in words:
+            word_ts.append({"word": w, "start": round(t, 3), "end": round(t + 0.25, 3)})
+            t += 0.3
+        dur = round(word_ts[-1]["end"] - cursor, 3) if word_ts else 1.0
+        if ti == 0:
+            dur = 3.0
+        elif ti == 1:
+            dur = 3.0
+        else:
+            dur = 2.5
+        # renormalize word ts to fit the exact segment duration
+        word_ts = []
+        t = cursor
+        step = dur / len(words)
+        for w in words:
+            word_ts.append({"word": w, "start": round(t, 3), "end": round(t + step * 0.8, 3)})
+            t += step
+        segs.append({
+            "text": text, "keywords": ["red", "blue"],
+            "start": round(cursor, 3), "end": round(cursor + dur, 3),
+            "duration": round(dur, 3), "words": word_ts,
+            "music_mood": "calm",
+        })
+        cursor += dur
+    return segs, cursor
+
+
+def test_caption_renderer():
+    print("\n[1.1/1.5] Caption renderer (karaoke + styling)")
+    from pipeline.caption_renderer import (
+        CAPTION_PRESETS, resolve_caption_style, render_karaoke_images, render_static_image,
+    )
+
+    style = resolve_caption_style({"caption_style": "minimal-white-center"})
+    check("preset resolves", style["mode"] == "karaoke" and style["position"] == "center")
+
+    style_default = resolve_caption_style({})
+    check("backward-compat default", style_default["mode"] == "karaoke" and style_default["position"] == "bottom")
+
+    style_inline = resolve_caption_style({"caption_style": {"color": "#ff0000", "position": "lower-third"}})
+    check("inline dict style", style_inline["color"] == "#ff0000" and style_inline["position"] == "lower-third")
+
+    words = [
+        {"word": "Halo", "start": 0.0, "end": 0.3},
+        {"word": "dunia", "start": 0.3, "end": 0.6},
+        {"word": "indah", "start": 0.6, "end": 0.9},
+    ]
+    frames = render_karaoke_images(words, style, 360, 640)
+    check("karaoke frame count == word count", len(frames) == 3)
+    # active word highlight: frame 0 and frame 1 must differ (different active word)
+    import numpy as np
+    a = np.array(frames[0]["image"]); b = np.array(frames[1]["image"])
+    check("frames differ between words", not np.array_equal(a, b))
+    check("frame timings", abs(frames[0]["start"] - 0.0) < 0.01 and abs(frames[1]["end"] - 0.6) < 0.01)
+
+    img = render_static_image("Halo dunia", style, 360, 640)
+    check("static image renders", img is not None and img.size == (360, 640))
+    check("all presets exist", {"bold-white-bottom", "minimal-white-center", "news-style-lower-third"} <= set(CAPTION_PRESETS))
+
+
+def test_stage3_words():
+    print("\n[1.1] Stage 3 attaches word timestamps")
+    from pipeline.stage3_narration import align_keywords_to_timestamps
+
+    script = [{"text": "Halo dunia", "keywords": ["a"]}, {"text": "Ini percobaan", "keywords": ["b"]}]
+    words = [
+        {"word": "Halo", "start": 0.1, "end": 0.4}, {"word": "dunia", "start": 0.4, "end": 0.8},
+        {"word": "Ini", "start": 0.9, "end": 1.2}, {"word": "percobaan", "start": 1.2, "end": 1.7},
+    ]
+    aligned = align_keywords_to_timestamps(script, words)
+    check("words attached to seg 0", len(aligned[0]["words"]) == 2 and aligned[0]["words"][0]["word"] == "Halo")
+    check("words attached to seg 1", len(aligned[1]["words"]) == 2)
+    check("segment times from words", abs(aligned[0]["start"] - 0.1) < 0.01 and abs(aligned[0]["end"] - 0.8) < 0.01)
+    check("fallback words empty", "words" in aligned[0])
+
+
+def test_stage2_music_mood():
+    print("\n[1.2] Stage 2 parses music_mood")
+    from pipeline.stage2_script import _parse_json_response
+
+    canned = '''{"music_mood": "epic", "segments": [{"act": "intro", "text": "Halo", "keywords": ["a"]}]}'''
+    segs, meta = _parse_json_response(canned)
+    check("music_mood parsed", meta.get("music_mood") == "epic")
+    check("segments intact", len(segs) == 1 and segs[0]["act"] == "intro")
+
+    from pipeline.stage_music import guess_music_mood
+    check("heuristic: tense", guess_music_mood("bahaya mengancam kota") == "tense")
+    check("heuristic: calm default", guess_music_mood("biasa saja") == "calm")
+
+
+def test_stage_music_ducking():
+    print("\n[1.2] Music ducking")
+    import numpy as np
+    from pipeline import stage_music
+    from config import AUDIO_CACHE_DIR
+
+    music_in = make_test_audio(AUDIO_CACHE_DIR / "test_music_in.wav", 220, 8.0)
+    narration = make_test_audio(AUDIO_CACHE_DIR / "test_narration.wav", 440, 8.0)
+
+    windows = [(2.0, 5.0)]  # narration speaks 2..5s
+    out = stage_music.build_ducked_music(music_in, windows, 8.0, str(narration),
+                                         out_path=AUDIO_CACHE_DIR / "test_music_ducked.wav")
+    check("ducked file created", out is not None and Path(out).exists())
+
+    inside = sample_wav_rms(str(out), 3.0, 4.0)   # during narration (ducked)
+    outside = sample_wav_rms(str(out), 6.0, 7.0)  # after narration (full)
+    check("ducking lowers volume", outside > 0 and inside < outside * 0.55,
+          f"inside={inside:.1f} outside={outside:.1f}")
+
+    first = sample_wav_rms(str(out), 0.0, 0.3)   # fade-in region
+    check("fade-in present", first < outside * 0.9, f"first={first:.1f}")
+
+
+def test_stage4_fase0():
+    print("\n[Fase 0] Multi-frame sampling + score floor + YouTube 2-window")
+    from pipeline import stage4_footage as s4
+
+    clip = make_test_video(Path("cache") / "test" / "red_clip.mp4", "red", 4.0)
+    frames = s4._extract_sample_frames(str(clip), n_frames=3)
+    check("3 frames sampled", len(frames) == 3)
+    check("middle frame named .sample.jpg", Path(str(clip) + ".sample.jpg").exists())
+    check("duration probe", s4._get_video_duration(str(clip)) > 3.5)
+
+    # score floor: weak match is rejected
+    orig = s4.get_ranked_candidates_for_segment
+    s4.get_ranked_candidates_for_segment = lambda *a, **k: [{
+        "video_path": "x.mp4", "keyword_used": "k", "score": 0.05, "source": "test"}]
+    try:
+        from config import MIN_ACCEPTABLE_CLIP_SCORE
+        res = s4.find_footage_for_segment(["red"], object())
+        check("weak match rejected (floor)", res is None)
+    finally:
+        s4.get_ranked_candidates_for_segment = orig
+
+    # YouTube 2-window: both windows downloaded, both returned.
+    # Use a unique id per run so the footage cache never short-circuits the test.
+    import uuid
+    dl = []
+    vid_id = f"VID{uuid.uuid4().hex[:10]}"
+    s4._download_youtube_fairuse = lambda url, out, window: dl.append((url, out, window)) or _touch(out)
+    try:
+        paths = s4.download_candidate({"source": "youtube_fairuse", "id": vid_id, "url": "https://youtu.be/VID1"})
+        check("2 windows downloaded", isinstance(paths, list) and len(paths) == 2 and len(dl) == 2)
+        check("windows are 10-20 and 30-40", sorted(w[2][0] for w in dl) == [10, 30])
+    finally:
+        s4._download_youtube_fairuse = None  # restore
+
+
+def _touch(path: str):
+    Path(path).write_bytes(b"\x00\x00\x00\x00")
+
+
+def test_stage4_wikimedia_n1():
+    print("\n[2.2] Wikimedia N+1 fix")
+    from pipeline import stage4_footage as s4
+    import requests as real_requests
+    calls = []
+    def fake_get(url, params=None, timeout=None):
+        calls.append((url, dict(params or {})))
+        class R:
+            def raise_for_status(self): pass
+            def json(self):
+                if url.endswith("api.php") and params.get("list") == "search":
+                    return {"query": {"search": [{"title": f"File:A{i}.webm"} for i in range(3)]}}
+                return {"query": {"pages": {str(i): {"title": f"File:A{i}.webm", "imageinfo": [{"url": f"https://x/A{i}.webm"}]} for i in range(3)}}}
+
+        return R()
+
+    s4.requests.get = fake_get
+    try:
+        cands = s4.search_wikimedia("tesla")
+        check("3 candidates", len(cands) == 3)
+        check("exactly 2 API calls (N+1 fixed)", len(calls) == 2, f"calls={len(calls)}")
+        check("titles pipe-joined", "File:A0.webm|File:A1.webm|File:A2.webm" in str(calls[1][1].get("titles", "")))
+    finally:
+        s4.requests.get = real_requests.get
+
+
+def test_stage4_parallel():
+    print("\n[2.1] Parallel search + download")
+    from pipeline import stage4_footage as s4
+    import concurrent.futures
+
+    # search_all_sources runs all 5 fns in parallel
+    order = []
+    def f1(q, n): time.sleep(0.15); order.append("f1"); return [{"source": "f1", "id": 1, "url": "x"}]
+    def f2(q, n): time.sleep(0.15); order.append("f2"); return []
+    def f3(q, n): time.sleep(0.15); order.append("f3"); return []
+    def f4(q, n): time.sleep(0.15); order.append("f4"); return []
+    def f5(q, n): time.sleep(0.15); order.append("f5"); return []
+    old = s4._INTERNET_SEARCH_FNS
+    s4._INTERNET_SEARCH_FNS = (f1, f2, f3, f4, f5)
+    old_workers = s4.STAGE4_SEARCH_WORKERS
+    s4.STAGE4_SEARCH_WORKERS = 5
+    try:
+        t0 = time.time()
+        res = s4.search_all_sources("test")
+        elapsed = time.time() - t0
+        check("parallel search < 0.3s for 5x0.15s sleeps", elapsed < 0.30, f"{elapsed:.2f}s")
+        check("result merged", len(res) == 1)
+    finally:
+        s4._INTERNET_SEARCH_FNS = old
+        s4.STAGE4_SEARCH_WORKERS = old_workers
+
+    # match_all_segments parallel (2.3) — mocked matcher, 4 segments
+    class MockMatcher:
+        def rank_all(self, keyword, paths):
+            time.sleep(0.15)
+            return [(p, 0.9) for p in paths]
+    s4.search_local_footage = lambda q, limit=5: []
+    s4.search_all_sources = lambda q, per_source=3: [{"source": "test", "id": q, "url": f"http://x/{q}.mp4"}]
+    s4.download_candidate = lambda c, dest_dir=None: f"cache/test/{c['id']}.mp4"
+    old_singleton = s4._clip_matcher_singleton
+    s4._clip_matcher_singleton = MockMatcher()
+    try:
+        segs = [{"keywords": [f"kw{i}"]} for i in range(4)]
+        t0 = time.time()
+        results = s4.match_all_segments(segs)
+        elapsed = time.time() - t0
+        check("4 segments done", len(results) == 4)
+        check("parallel segments < 0.5s (serial would be ~0.6s)", elapsed < 0.5, f"{elapsed:.2f}s")
+    finally:
+        s4._clip_matcher_singleton = old_singleton
+
+
+def test_stage5_assembly(with_music=True):
+    print("\n[1.1-1.5] Stage 5 end-to-end assembly")
+    import pipeline.stage5_assembly as s5
+    from config import AUDIO_CACHE_DIR
+
+    # patch to a small resolution + test output dir for a fast render
+    test_out = ROOT / "output" / "test_renders"
+    test_out.mkdir(parents=True, exist_ok=True)
+    old_res = s5.OUTPUT_RESOLUTION
+    old_dir = s5.OUTPUT_DIR
+    s5.OUTPUT_RESOLUTION = (360, 640)
+    s5.OUTPUT_DIR = test_out
+
+    # caption style unit checks (before full render)
+    segs, total = make_timed_segments()
+    style = s5.resolve_caption_style({"caption_style": "bold-white-bottom"})
+    clips = s5._caption_clips_for_segment(segs[0], style, 360, 640)
+    check("karaoke -> one clip per word", len(clips) == len(segs[0]["words"]))
+    style_static = dict(style); style_static["mode"] = "static"
+    clips_s = s5._caption_clips_for_segment(segs[0], style_static, 360, 640)
+    check("static -> one clip", len(clips_s) == 1)
+
+    try:
+        clip_a = make_test_video(Path("cache") / "test" / "clip_a.mp4", "red", 5.0)
+        clip_b = make_test_video(Path("cache") / "test" / "clip_b.mp4", "blue", 5.0)
+        clip_c = make_test_video(Path("cache") / "test" / "clip_c.mp4", "green", 5.0)
+        narration = make_test_audio(AUDIO_CACHE_DIR / "test_narration_5s.wav", 440, total)
+        music = make_test_audio(AUDIO_CACHE_DIR / "test_music_5s.wav", 220, total + 1)
+
+        footage_map = {0: {"video_path": str(clip_a), "source": "test"},
+                       1: {"video_path": str(clip_b), "source": "test"},
+                       2: {"video_path": str(clip_c), "source": "test"}}
+        template = {
+            "template_name": "test_tpl",
+            "pacing": {"avg_shot_duration": 8.0},  # one cut per segment
+            "caption_style": "minimal-white-center",
+        }
+
+        progress = []
+        out = s5.assemble_video(
+            segs, footage_map, str(narration), template,
+            output_name="test_roadmap_render", on_progress=lambda p, m: progress.append(p),
+            music_path=str(music) if with_music else None,
+        )
+        check("render produced file", Path(out).exists())
+        dur = probe_duration(out)
+        check("duration == narration total", abs(dur - total) < 0.3, f"got {dur:.2f}s want {total:.2f}s")
+        check("audio track present", probe_audio_streams(out) >= 1)
+        check("progress reported", len(progress) > 3 and max(progress) >= 20)
+        return str(out)
+    finally:
+        s5.OUTPUT_RESOLUTION = old_res
+        s5.OUTPUT_DIR = old_dir
+
+
+def test_server_render_endpoint():
+    print("\n[BUG FIX] /api/render endpoint renders (regression test)")
+    from fastapi.testclient import TestClient
+    import server as server_mod
+    from config import AUDIO_CACHE_DIR
+
+    # prep payload
+    segs, total = make_timed_segments()
+    clip_a = make_test_video(Path("cache") / "test" / "clip_a.mp4", "red", 5.0)
+    clip_b = make_test_video(Path("cache") / "test" / "clip_b.mp4", "blue", 5.0)
+    clip_c = make_test_video(Path("cache") / "test" / "clip_c.mp4", "green", 5.0)
+    narration = make_test_audio(AUDIO_CACHE_DIR / "test_narration_5s.wav", 440, total)
+
+    import pipeline.stage5_assembly as s5
+    old_res = s5.OUTPUT_RESOLUTION
+    old_dir = s5.OUTPUT_DIR
+    s5.OUTPUT_RESOLUTION = (360, 640)
+    s5.OUTPUT_DIR = ROOT / "output" / "test_renders"
+    (ROOT / "output" / "test_renders").mkdir(parents=True, exist_ok=True)
+
+    template_json = {"template_name": "test_tpl", "pacing": {"avg_shot_duration": 8.0}, "caption_style": "minimal-white-center"}
+    (ROOT / "templates" / "test_tpl.json").write_text(json.dumps(template_json), encoding="utf-8")
+
+    try:
+        with TestClient(server_mod.app) as client:
+            resp = client.post("/api/render", json={
+                "template_name": "test_tpl",
+                "timed_segments": segs,
+                "footage_map": {"0": {"video_path": str(clip_a)}, "1": {"video_path": str(clip_b)}, "2": {"video_path": str(clip_c)}},
+                "narration_audio_path": str(narration),
+                "output_name": "test_api_render",
+            })
+            check("POST accepted", resp.status_code == 200, f"status={resp.status_code}")
+            job_id = resp.json()["job_id"]
+
+            for _ in range(120):
+                job = client.get(f"/api/jobs/{job_id}").json()
+                if job["status"] in ("done", "error"):
+                    break
+                time.sleep(1)
+            check("job done", job["status"] == "done", f"status={job['status']} error={job.get('error')}")
+            out_url = job.get("result", {}).get("output_url") if job.get("result") else None
+            check("output url returned", bool(out_url))
+            if out_url:
+                fpath = ROOT / "output" / "test_renders" / Path(out_url).name
+                check("output file exists", fpath.exists())
+    finally:
+        s5.OUTPUT_RESOLUTION = old_res
+        s5.OUTPUT_DIR = old_dir
+        (ROOT / "templates" / "test_tpl.json").unlink(missing_ok=True)
+
+
+def test_clip_smoke():
+    print("\n[2.4/CLIP] Real CLIP model smoke test (env fix verification)")
+    from pipeline.stage4_footage import get_clip_matcher, _extract_sample_frames
+    clip = make_test_video(Path("cache") / "test" / "clip_smoke.mp4", "red", 3.0)
+    frames = _extract_sample_frames(str(clip), n_frames=2)
+    matcher = get_clip_matcher()
+    check("singleton identity", get_clip_matcher() is matcher)
+    try:
+        ranked = matcher.rank_all("a red screen", [str(clip)])
+        check("clip scored", len(ranked) == 1 and isinstance(ranked[0][1], float))
+    except Exception as e:
+        check("clip scored", False, str(e))
+
+
+def main():
+    which = set(sys.argv[1:])
+    run_all = "--all" in which or len(which) == 0
+
+    tests = [
+        ("caption_renderer", test_caption_renderer),
+        ("stage3_words", test_stage3_words),
+        ("stage2_music_mood", test_stage2_music_mood),
+        ("stage_music_ducking", test_stage_music_ducking),
+        ("stage4_fase0", test_stage4_fase0),
+        ("stage4_wikimedia_n1", test_stage4_wikimedia_n1),
+        ("stage4_parallel", test_stage4_parallel),
+        ("stage5_assembly", test_stage5_assembly),
+    ]
+    if run_all or "--with-server" in which:
+        tests.append(("server_render", test_server_render_endpoint))
+    if run_all or "--with-clip" in which:
+        tests.append(("clip_smoke", test_clip_smoke))
+
+    for name, fn in tests:
+        print(f"\n=== {name} ===")
+        try:
+            fn()
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            FAILED.append(name)
+            print(f"  FAIL  {name} — exception: {e}")
+
+    print("\n" + "=" * 50)
+    print(f"PASSED: {len(PASSED)}  FAILED: {len(FAILED)}")
+    if FAILED:
+        print("Failed:", ", ".join(FAILED))
+        sys.exit(1)
+    print("ALL GREEN ✅")
+
+
+if __name__ == "__main__":
+    main()
