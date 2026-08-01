@@ -64,6 +64,7 @@ function TimelineEditor({ narration, footageData, picks }) {
   const [job, setJob] = useState(null);
   const [error, setError] = useState(null);
   const [result, setResult] = useState(null);
+  const [renderPath, setRenderPath] = useState("");  // server path hasil render
   const [playing, setPlaying] = useState(false);
   const [zoom, setZoom] = useState(1.0);           // 3.2 zoom
   const [autoPreview, setAutoPreview] = useState(false); // 3.5 auto preview
@@ -378,9 +379,11 @@ function TimelineEditor({ narration, footageData, picks }) {
         transition_style: finishing.transition_style,
         ken_burns: finishing.ken_burns,
       };
-      const blob = await fetch(endpoint, {
+      const resp = await fetch(endpoint, {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)
-      }).then(r => { if (!r.ok) throw new Error((preview ? "Preview" : "Export") + " failed"); return r.blob(); });
+      });
+      if (!resp.ok) throw new Error((preview ? "Preview" : "Export") + " failed");
+      const blob = await resp.blob();
       const url = URL.createObjectURL(blob);
       if (preview) {
         setPreviewUrl(url);
@@ -388,9 +391,32 @@ function TimelineEditor({ narration, footageData, picks }) {
         if (videoRef.current) { videoRef.current.src = url; setPlaying(true); }
       } else {
         setResult(url);
+        setRenderPath(resp.headers.get("X-Render-Path") || "");
         setJob(null);
       }
     } catch (e) { setJob(null); setError(String(e)); }
+  };
+
+  // Thumbnail generator dari hasil render (pakai renderPath server)
+  const [thumbBusy, setThumbBusy] = useState(false);
+  const [thumbUrl, setThumbUrl] = useState(null);
+  const [thumbTitle, setThumbTitle] = useState(
+    segments.map(s => s.narration_text).join(" ").trim().slice(0, 60)
+  );
+
+  const generateThumbnail = async () => {
+    if (!renderPath || !thumbTitle.trim()) return;
+    setThumbBusy(true); setError(null);
+    try {
+      const res = await fetch("/api/thumbnail/generate", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ video_path: renderPath, title: thumbTitle.trim() }),
+      });
+      if (!res.ok) throw new Error("Thumbnail gagal");
+      const data = await res.json();
+      setThumbUrl(data.url);
+    } catch (e) { setError(String(e)); }
+    finally { setThumbBusy(false); }
   };
 
   // 3.5 — auto-preview: debounce 1.5s setelah edit (kalau toggle nyala)
@@ -674,6 +700,20 @@ function TimelineEditor({ narration, footageData, picks }) {
         {result && <PrimaryButton onClick={downloadVideo} icon={Download} variant="outline">Download .mp4</PrimaryButton>}
       </div>
       {(previewUrl || result) && <div style={{ borderRadius: 8, overflow: "hidden", background: "#000" }}><video ref={videoRef} src={previewUrl || result} controls style={{ width: "100%", maxHeight: 400, display: "block" }} onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} /></div>}
+      {result && (
+        <div className="flex flex-col gap-3 px-4 py-3.5 rounded" style={{ background: C.panel, border: `1px solid ${C.borderSoft}` }}>
+          <span style={{ fontFamily: F.mono, fontSize: 10, color: C.amber, letterSpacing: "0.08em" }}>THUMBNAIL YOUTUBE</span>
+          <div className="flex items-center gap-3 flex-wrap">
+            <input value={thumbTitle} onChange={e => setThumbTitle(e.target.value)} placeholder="Judul thumbnail (teks di gambar)"
+              style={{ flex: 1, minWidth: 220, fontFamily: F.body, fontSize: 12.5, color: C.paper, background: C.panelRaised, border: `1px solid ${C.borderSoft}`, borderRadius: 6, padding: "9px 12px", outline: "none" }} />
+            <button onClick={generateThumbnail} disabled={thumbBusy || !thumbTitle.trim()} className="flex items-center gap-2 px-4 py-2 rounded" style={{ background: thumbBusy || !thumbTitle.trim() ? C.panelRaised : C.cyan, color: C.bg, fontFamily: F.body, fontWeight: 700, fontSize: 12.5, border: "none", cursor: thumbBusy || !thumbTitle.trim() ? "default" : "pointer", opacity: thumbBusy || !thumbTitle.trim() ? 0.5 : 1 }}>
+              {thumbBusy ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />} Buat Thumbnail
+            </button>
+            {thumbUrl && <a href={thumbUrl} download style={{ display: "flex", alignItems: "center", gap: 6, fontFamily: F.mono, fontSize: 11, color: C.amber, textDecoration: "none", background: C.panelRaised, border: `1px solid ${C.borderSoft}`, borderRadius: 6, padding: "8px 12px" }}><Download size={12} /> Download .jpg</a>}
+          </div>
+          {thumbUrl && <img src={thumbUrl} alt="thumbnail" style={{ width: "100%", maxWidth: 480, borderRadius: 8, border: `1px solid ${C.borderSoft}` }} />}
+        </div>
+      )}
       <div className="flex items-start gap-2 px-3.5 py-2.5 rounded" style={{ background: C.panel, border: `1px solid ${C.borderSoft}` }}>
         <Info size={14} color={C.amber} style={{ marginTop: 1, flexShrink: 0 }} />
         <span style={{ fontFamily: F.body, fontSize: 11.5, color: C.paperDim, lineHeight: 1.5 }}>

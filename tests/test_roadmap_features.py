@@ -773,6 +773,44 @@ def test_fase4_srt_export():
         check("endpoint has fallback text", "satu dua tiga" in resp.text)
 
 
+def test_clipper():
+    print("\n[Clipper] analyze + render 9:16 + thumbnail + upload")
+    import server as server_mod
+    from fastapi.testclient import TestClient
+    v = make_test_video(Path("cache") / "test" / "clipper_src.mp4", "red", 12.0)
+    from pipeline.clipper import analyze_video, render_clips, probe_resolution
+    clips = analyze_video(str(v), num_clips=4)
+    check("exact clip count", len(clips) == 4, f"got {len(clips)}")
+    check("windows cover full video", abs(sum(c["duration"] for c in clips) - 12.0) < 0.01)
+    check("clips ordered", clips[0]["start"] >= 0 and clips[-1]["end"] <= 12.01)
+    outs = render_clips(str(v), clips[:2], "output/clipper_test", aspect="9:16")
+    check("rendered files exist", all(os.path.exists(p) and os.path.getsize(p) > 1000 for p in outs))
+    w, h = probe_resolution(outs[0])
+    check("9:16 resolution", (w, h) == (1080, 1920), f"{w}x{h}")
+
+    from pipeline.thumbnail import generate_thumbnail
+    t = generate_thumbnail(str(v), "Judul uji wrap panjang", str(Path("output") / "thumb_test.jpg"), subtitle="SUBSCRIBE")
+    from PIL import Image
+    im = Image.open(t)
+    check("thumb 1280x720", im.size == (1280, 720), f"{im.size}")
+
+    with TestClient(server_mod.app) as client:
+        r = client.post("/api/clipper/analyze", json={"video_path": str(v), "num_clips": 3})
+        check("analyze 200", r.status_code == 200, f"status={r.status_code}")
+        data = r.json()
+        check("analyze clips + preview", len(data["clips"]) == 3 and bool(data["clips"][0].get("thumbnail_url")))
+        r = client.post("/api/clipper/render", json={"video_path": str(v), "clips": data["clips"][:2], "aspect": "9:16"})
+        check("render 200", r.status_code == 200, f"status={r.status_code}")
+        files = r.json()["files"]
+        check("render files + zip", len(files) == 3 and files[-1].get("is_zip"))
+        r = client.post("/api/thumbnail/generate", json={"video_path": str(v), "title": "Tes Judul"})
+        check("thumb endpoint 200", r.status_code == 200 and "thumbnails/" in r.json()["url"])
+        r = client.post("/api/clipper/upload", files={"video": ("c.mp4", open(v, "rb"), "video/mp4")})
+        check("upload 200", r.status_code == 200 and r.json().get("video_path"))
+        r = client.post("/api/clipper/youtube", json={"youtube_url": "http://169.254.169.254/x"})
+        check("ssrf blocked", r.status_code == 400, f"status={r.status_code}")
+
+
 def main():
     which = set(sys.argv[1:])
     run_all = "--all" in which or len(which) == 0
@@ -789,6 +827,7 @@ def main():
         ("clip_sidecar_1b4", test_fase14_clip_sidecar),
         ("per_segment_audio_30", test_fase3_per_segment_audio),
         ("srt_export", test_fase4_srt_export),
+        ("clipper", test_clipper),
     ]
     if run_all or "--with-server" in which:
         tests.append(("server_render", test_server_render_endpoint))

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import TimelineEditor from "./TimelineEditor.jsx";
+import ClipperTool from "./ClipperTool.jsx";
 import {
   Film, FileText, Mic, ScanSearch, Clapperboard,
   Check, Lock, RefreshCw, Download, Info, ChevronRight, Play,
@@ -1352,6 +1353,7 @@ export default function Ritme() {
   const [active, setActive] = useStickyState(1, "ritme_active");
   const [maxUnlocked, setMaxUnlocked] = useStickyState(1, "ritme_maxUnlocked");
   const [showExtractor, setShowExtractor] = useState(false);
+  const [showClipper, setShowClipper] = useState(false);
 
   const [template, setTemplate] = useStickyState(null, "ritme_template");
   const [script, setScript] = useStickyState(null, "ritme_script");
@@ -1400,6 +1402,10 @@ export default function Ritme() {
             <Scissors size={12} />
             <span style={{ fontFamily: F.mono, fontSize: 10 }}>Footage Extractor</span>
           </button>
+          <button onClick={() => setShowClipper(true)} className="flex items-center gap-1.5 px-3 py-1.5 rounded" style={{ background: C.tally, border: "none", color: C.paper, cursor: "pointer", fontWeight: 600 }}>
+            <Clapperboard size={12} />
+            <span style={{ fontFamily: F.mono, fontSize: 10 }}>Clipper</span>
+          </button>
           <div className="flex items-center gap-1.5">
             <div style={{ width: 6, height: 6, borderRadius: "50%", background: C.tally }} />
             <span style={{ fontFamily: F.mono, fontSize: 10, color: C.paperDim }}>REC</span>
@@ -1408,6 +1414,7 @@ export default function Ritme() {
       </div>
       
       {showExtractor && <FootageExtractorTool onClose={() => setShowExtractor(false)} />}
+      {showClipper && <ClipperTool onClose={() => setShowClipper(false)} />}
 
       <StageNav active={active} setActive={setActive} maxUnlocked={maxUnlocked} />
 

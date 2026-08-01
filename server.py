@@ -770,7 +770,8 @@ def timeline_export(req: TimelineExportRequest):
     )
     if not os.path.exists(out_path):
         raise HTTPException(500, "Render selesai tapi file output tidak ditemukan")
-    return FileResponse(out_path, media_type="video/mp4", filename=f"{_safe_output_name(req.output_name)}.mp4")
+    return FileResponse(out_path, media_type="video/mp4", filename=f"{_safe_output_name(req.output_name)}.mp4",
+                        headers={"X-Render-Path": out_path})
 
 
 @app.post("/api/timeline/preview")
@@ -828,6 +829,152 @@ def regenerate_subtitles(req: SubtitleRegenRequest):
     except Exception as e:
         raise HTTPException(500, f"Subtitle regeneration failed: {e}")
     return {"segments": timed}
+
+
+# ============================================================
+# Clipper — 1 video -> N clip vertical 9:16 (Reels/TikTok)
+# ============================================================
+class ClipperAnalyzeRequest(BaseModel):
+    video_path: str
+    num_clips: int = 5
+
+
+class ClipperRenderRequest(BaseModel):
+    video_path: str
+    clips: list[dict] = []   # [{index, start, end}]
+    aspect: str = "9:16"
+    output_name: str = "clipper"
+
+
+CLIPPER_DIR = OUTPUT_DIR / "clipper"
+CLIPPER_DIR.mkdir(parents=True, exist_ok=True)
+
+
+@app.post("/api/clipper/upload")
+async def clipper_upload(video: UploadFile = File(...)):
+    """Upload video -> simpan ke UPLOADS_DIR, return video_path buat analyze."""
+    _validate_upload(video, ALLOWED_VIDEO_TYPES)
+    dest = UPLOADS_DIR / f"{uuid.uuid4().hex}_{Path(video.filename).name}"
+    with open(dest, "wb") as f:
+        shutil.copyfileobj(video.file, f)
+    return {"video_path": str(dest), "name": video.filename}
+
+
+class ClipperYoutubeRequest(BaseModel):
+    youtube_url: str
+    topic: str = ""
+
+
+@app.post("/api/clipper/youtube")
+async def clipper_youtube(req: ClipperYoutubeRequest):
+    """Download video YouTube (async job) -> result.video_path."""
+    _validate_youtube_url(req.youtube_url)
+    dest = UPLOADS_DIR / f"{uuid.uuid4().hex}_youtube.mp4"
+    job_id = job_manager.create()
+
+    def _run(job_id):
+        job_manager.update(job_id, progress=5, message="Mengunduh video dari YouTube...")
+        import yt_dlp
+        ydl_opts = {"format": "best[height<=1080]", "outtmpl": str(dest), "quiet": True,
+                    "noplaylist": True}
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.extract_info(req.youtube_url, download=True)
+        if not os.path.exists(dest):
+            raise RuntimeError("Gagal mengunduh video")
+        return {"video_path": str(dest), "name": Path(dest).name}
+
+    job_manager.run_async(job_id, _run)
+    return {"job_id": job_id}
+
+
+@app.post("/api/clipper/analyze")
+def clipper_analyze(req: ClipperAnalyzeRequest):
+    """Bagi video jadi N clip pintar (scene-aware) + frame preview tiap clip."""
+    from pipeline import clipper as cli
+    if not os.path.exists(req.video_path):
+        raise HTTPException(400, "video_path tidak ditemukan")
+    try:
+        clips = cli.analyze_video(req.video_path, num_clips=req.num_clips)
+    except Exception as e:
+        raise HTTPException(500, f"Clipper analyze gagal: {e}")
+
+    # frame preview per clip (thumbnail kecil, diserve via /outputs/render)
+    for c in clips:
+        frame_rel = f"clipper_frames/{Path(req.video_path).stem}_{c['index']}.jpg"
+        frame_abs = OUTPUT_DIR / frame_rel
+        try:
+            cli.extract_frame(req.video_path, c["start"] + min(0.8, c["duration"] / 3), str(frame_abs))
+            c["thumbnail_url"] = f"/outputs/render/{frame_rel}"
+        except Exception:
+            c["thumbnail_url"] = ""
+    return {"clips": clips, "total_duration": cli.probe_duration(req.video_path)}
+
+
+@app.post("/api/clipper/render")
+def clipper_render(req: ClipperRenderRequest):
+    """Render clip terpilih jadi aspect target. Return per-clip URLs + zip."""
+    from pipeline import clipper as cli
+    import zipfile
+    if not os.path.exists(req.video_path):
+        raise HTTPException(400, "video_path tidak ditemukan")
+    if not req.clips:
+        raise HTTPException(400, "Pilih minimal 1 clip")
+    safe = _safe_output_name(req.output_name)
+    job_dir = CLIPPER_DIR / f"{safe}_{uuid.uuid4().hex[:8]}"
+    job_dir.mkdir(parents=True, exist_ok=True)
+
+    try:
+        outs = cli.render_clips(req.video_path, req.clips, str(job_dir), aspect=req.aspect)
+    except Exception as e:
+        raise HTTPException(500, f"Clipper render gagal: {e}")
+
+    files = []
+    for i, p in enumerate(outs):
+        rel = str(Path(p).relative_to(OUTPUT_DIR))
+        files.append({
+            "name": Path(p).name,
+            "url": f"/outputs/render/{rel}",
+            "path": str(p),
+        })
+
+    # zip semua clip
+    zip_path = job_dir / f"{safe}_clips.zip"
+    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+        for p in outs:
+            zf.write(p, arcname=Path(p).name)
+    files.append({
+        "name": zip_path.name,
+        "url": f"/outputs/render/{str(zip_path.relative_to(OUTPUT_DIR))}",
+        "path": str(zip_path),
+        "is_zip": True,
+    })
+    return {"files": files, "job_dir": str(job_dir)}
+
+
+# ============================================================
+# Thumbnail generator
+# ============================================================
+class ThumbnailRequest(BaseModel):
+    video_path: str
+    title: str
+    subtitle: str = ""
+
+
+@app.post("/api/thumbnail/generate")
+def thumbnail_generate(req: ThumbnailRequest):
+    """Frame terbaik + overlay judul -> 1280x720 jpg."""
+    from pipeline.thumbnail import generate_thumbnail
+    if not os.path.exists(req.video_path):
+        raise HTTPException(400, "video_path tidak ditemukan")
+    if not req.title.strip():
+        raise HTTPException(400, "title wajib diisi")
+    safe = _safe_output_name(f"thumb_{req.title}").replace(" ", "_") or "thumb"
+    out = OUTPUT_DIR / f"thumbnails/{safe}_{uuid.uuid4().hex[:6]}.jpg"
+    try:
+        generate_thumbnail(req.video_path, req.title.strip(), str(out), subtitle=req.subtitle.strip())
+    except Exception as e:
+        raise HTTPException(500, f"Thumbnail gagal: {e}")
+    return {"url": f"/outputs/render/thumbnails/{out.name}", "path": str(out)}
 
 
 # Static file serving: outputs (video/audio previews) + frontend
