@@ -83,6 +83,26 @@ STAGE4_SEGMENT_WORKERS = int(os.getenv("STAGE4_SEGMENT_WORKERS", "3")) # segment
 # caption_style field can override this per-template.
 CAPTION_MODE = os.getenv("CAPTION_MODE", "karaoke")
 
+# --- Footage clip captioning model (Fase 1B.2 roadmap) ---
+# Which model tags extracted clips. "auto" tries a cloud VLM when a key is
+# present (GEMINI_API_KEY free tier first, then OPENAI_API_KEY), falling back
+# to local BLIP. "blip" forces the local model. "gemini"/"openai" force the
+# cloud model and error visibly if the key is missing.
+CAPTION_MODEL = os.getenv("CAPTION_MODEL", "auto")
+CAPTION_VLM_PROMPT = os.getenv(
+    "CAPTION_VLM_PROMPT",
+    "Describe this video frame as short stock-footage keywords (English, "
+    "lowercase, comma-separated, 4-8 words). Focus on visible subjects, "
+    "setting, actions, camera style.",
+)
+
+# --- Precomputed CLIP embeddings (Fase 1B.4 roadmap) ---
+# When True, extract_clips() computes and saves a sidecar embedding
+# (<clip>.emb.json) per clip so Stage 4 local matching skips re-running
+# ffmpeg + CLIP on every match. Matching still falls back to on-the-fly
+# scoring for clips without a sidecar.
+PRECOMPUTE_CLIP_ON_EXTRACT = os.getenv("PRECOMPUTE_CLIP_ON_EXTRACT", "true").lower() in ("1", "true", "yes")
+
 # --- Background music (Fase 1.2 roadmap) ---
 MUSIC_ENABLED = os.getenv("MUSIC_ENABLED", "true").lower() in ("1", "true", "yes")
 MUSIC_DIR = BASE_DIR / os.getenv("MUSIC_DIR", "music")

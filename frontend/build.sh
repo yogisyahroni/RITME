@@ -24,7 +24,7 @@ npx esbuild entry.jsx --bundle --loader:.jsx=jsx --format=iife --outfile=dist/bu
 
 echo "Building Tailwind CSS…"
 cat > tailwind.config.js << 'EOF'
-module.exports = { content: ["./src/App.jsx"], theme: { extend: {} }, plugins: [] }
+module.exports = { content: ["./src/App.jsx", "./src/TimelineEditor.jsx"], theme: { extend: {} }, plugins: [] }
 EOF
 cat > input.css << 'EOF'
 @tailwind base;

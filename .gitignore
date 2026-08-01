@@ -40,6 +40,13 @@ temp_*
 *.swp
 *.swo
 
+# === Hermes / test artifacts ===
+.hermes/
+tests/.hermes-tmp.*/
+*.sample.jpg
+*.sample_0.jpg
+*.sample_2.jpg
+
 # === OS ===
 Thumbs.db
 Desktop.ini

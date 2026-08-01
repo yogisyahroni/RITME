@@ -22,8 +22,18 @@ class JobManager:
             self._jobs[job_id] = {
                 "status": "pending", "progress": 0, "message": "",
                 "result": None, "error": None,
+                # Fase 1B.3: parallel footage extraction progress, as part of
+                # the SAME job (not an invisible separate job). Shape:
+                # {status: idle|running|done|error, progress: 0-100, message}
+                "footage_extraction": None,
             }
         return job_id
+
+    def update_footage(self, job_id: str, status: str, progress: float = 0, message: str = ""):
+        """Track footage-extraction sub-progress inside the parent job."""
+        self.update(job_id, footage_extraction={
+            "status": status, "progress": progress, "message": message,
+        })
 
     def update(self, job_id: str, **fields):
         with self._lock:

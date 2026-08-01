@@ -82,46 +82,53 @@ def synthesize_narration(script_segments: list[dict], out_path: str | None = Non
 
     provider = (provider or TTS_PROVIDER).lower()
     lang = _detect_language(full_text)
-    
+    _synthesize_text(full_text, out_path, provider, lang)
+
+    print(f"[stage3] Narration audio saved to {out_path}")
+    return out_path
+
+
+def _synthesize_text(text: str, out_path: str, provider: str, lang: str) -> None:
+    """Route a single text through the configured TTS provider. Shared by the
+    full-narration and per-segment paths (Fase 3.0) so both behave identically."""
     if provider == "pyttsx3":
-        _synthesize_pyttsx3(full_text, out_path)
+        _synthesize_pyttsx3(text, out_path)
     elif provider == "elevenlabs":
-        _synthesize_elevenlabs(full_text, out_path)
+        _synthesize_elevenlabs(text, out_path)
     elif provider == "xtts":
         # XTTS v2 does not support Bahasa Indonesia — fall back to English with a warning
         if lang == "id":
             print("[stage3] WARNING: XTTS v2 tidak mendukung Bahasa Indonesia. Menggunakan English sebagai fallback.")
-        lang_code = "en"
-        _synthesize_xtts(full_text, out_path, language=lang_code)
+        _synthesize_xtts(text, out_path, language="en")
     elif provider == "f5tts":
         max_retries = 3
         best_score = 0.0
         best_audio_path = None
         import shutil
-        
+
         for attempt in range(max_retries):
             temp_out = out_path.replace(".wav", f"_attempt_{attempt}.wav")
-            
+
             # Vary nfe_step slightly per attempt to ensure different random seeds/outputs and break determinism safely
             # Attempt 0: 32 (Default, high quality)
             # Attempt 1: 24 (Faster solver path, slightly different intonation)
             # Attempt 2: 40 (Slower solver path, detailed intonation)
             nfe_val = 32 if attempt == 0 else (24 if attempt == 1 else 40)
-            
+
             if lang == "id":
                 print(f"[stage3] [Attempt {attempt+1}/{max_retries}] Detected Indonesian text, routing to F5-TTS...")
-                _synthesize_f5tts(full_text, temp_out, lang="id", nfe_step=nfe_val)
+                _synthesize_f5tts(text, temp_out, lang="id", nfe_step=nfe_val)
             else:
                 print(f"[stage3] [Attempt {attempt+1}/{max_retries}] Detected English text, routing to F5-TTS...")
-                _synthesize_f5tts(full_text, temp_out, lang="en", nfe_step=nfe_val)
-            
+                _synthesize_f5tts(text, temp_out, lang="en", nfe_step=nfe_val)
+
             print(f"[stage3] Menilai kualitas audio dengan UTMOS...")
             score = _evaluate_audio_quality(temp_out)
-            
+
             if score > best_score:
                 best_score = score
                 best_audio_path = temp_out
-                
+
             if score >= 3.8:
                 print(f"[stage3] LULUS: Kualitas Audio (MOS) = {score:.2f} / 5.0")
                 break
@@ -129,12 +136,12 @@ def synthesize_narration(script_segments: list[dict], out_path: str | None = Non
                 print(f"[stage3] GAGAL: Kualitas Audio (MOS) = {score:.2f} / 5.0 (Syarat kelulusan >= 3.8)")
                 if attempt < max_retries - 1:
                     print(f"[stage3] Auto-Regenerate audio...")
-                    
+
         # Copy the best attempt to the final out_path
         if best_audio_path and os.path.exists(best_audio_path):
             shutil.copy2(best_audio_path, out_path)
             print(f"[stage3] Selesai! Menggunakan kandidat audio terbaik dengan skor MOS {best_score:.2f}")
-            
+
             # Clean up temp files
             for attempt in range(max_retries):
                 temp_file = out_path.replace(".wav", f"_attempt_{attempt}.wav")
@@ -146,14 +153,83 @@ def synthesize_narration(script_segments: list[dict], out_path: str | None = Non
         if torch.cuda.is_available():
             print("[stage3] Clearing CUDA cache before loading OmniVoice...")
             torch.cuda.empty_cache()
-            
+
         print("[stage3] Routing to OmniVoice...")
-        _synthesize_omnivoice(full_text, out_path, lang)
+        _synthesize_omnivoice(text, out_path, lang)
     else:
         raise RuntimeError(f"Unknown TTS provider: {provider}")
 
-    print(f"[stage3] Narration audio saved to {out_path}")
-    return out_path
+
+def audio_duration(path: str) -> float:
+    """Seconds of an audio file (torchaudio first, ffprobe fallback)."""
+    try:
+        import torchaudio
+        info = torchaudio.info(path)
+        return float(info.num_frames) / float(info.sample_rate)
+    except Exception:
+        pass
+    try:
+        import subprocess
+        out = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+             "-of", "default=noprint_wrappers=1:nokey=1", path],
+            capture_output=True, text=True, timeout=30)
+        return float(out.stdout.strip())
+    except Exception:
+        return 0.0
+
+
+def synthesize_narration_per_segment(script_segments: list[dict], out_dir: str | None = None, provider: str | None = None) -> tuple[list[str], list[float]]:
+    """
+    Fase 3.0: synthesize each segment's text into its own audio file so the
+    timeline can move/trim/regenerate segments independently. Returns
+    (audio_paths, durations_sec) aligned to script_segments order. A segment
+    with empty text yields ("", 0.0) at its position.
+    """
+    out_dir = Path(out_dir or (AUDIO_CACHE_DIR / "segments"))
+    out_dir.mkdir(parents=True, exist_ok=True)
+    provider = (provider or TTS_PROVIDER).lower()
+    full_text = "\n\n".join(s.get("text", "").strip() for s in script_segments)
+    lang = _detect_language(full_text)
+
+    paths, durations = [], []
+    for i, seg in enumerate(script_segments):
+        t = (seg.get("text") or "").strip()
+        if not t:
+            paths.append("")
+            durations.append(0.0)
+            continue
+        if not t.endswith(('.', '!', '?')):
+            t += "."
+        out_path = str(out_dir / f"segment_{i + 1:03d}.wav")
+        _synthesize_text(t, out_path, provider, lang)
+        d = audio_duration(out_path)
+        paths.append(out_path)
+        durations.append(d)
+        print(f"[stage3] Segment {i + 1}: {d:.2f}s -> {out_path}")
+    return paths, durations
+
+
+def concat_audio_files(paths: list[str], out_path: str) -> str:
+    """Concatenate WAV files into one continuous track via the ffmpeg concat
+    demuxer (lossless for PCM). Used by Fase 3.0 to rebuild the full narration
+    track from per-segment audio. Raises RuntimeError on failure."""
+    import subprocess
+    list_file = out_path + ".txt"
+    with open(list_file, "w", encoding="utf-8") as f:
+        for p in paths:
+            if p:
+                f.write(f"file '{Path(p).resolve().as_posix()}'\n")
+    try:
+        subprocess.run(
+            ["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", list_file,
+             "-c", "copy", out_path],
+            check=True, capture_output=True, text=True, timeout=120)
+        Path(list_file).unlink(missing_ok=True)
+        return out_path
+    except Exception as e:
+        Path(list_file).unlink(missing_ok=True)
+        raise RuntimeError(f"concat_audio_files failed: {e}") from e
 
 
 def _synthesize_pyttsx3(text: str, out_path: str) -> None:
@@ -390,6 +466,42 @@ def transcribe_with_timestamps(audio_path: str, model_size: str = WHISPER_MODEL_
                 "end": round(w.end, 3),
             })
     return words
+
+
+def transcribe_segment_audio(segments_with_audio: list[dict], model_size: str = WHISPER_MODEL_SIZE) -> list[dict]:
+    """
+    Fase 3.4: after timeline edits (text change, audio swap, reorder), re-run
+    Whisper per segment audio and rebuild timed segments with fresh per-word
+    timestamps. Input: [{text, audio_path, keywords?}]. Output keeps input
+    order; start/end accumulate from each segment's own audio duration, so
+    subtitle timing always matches the edited narration.
+    """
+    timed = []
+    cursor = 0.0
+    for seg in segments_with_audio:
+        text = (seg.get("text") or "").strip()
+        audio = seg.get("audio_path") or ""
+        if audio and os.path.exists(audio):
+            words_abs = transcribe_with_timestamps(audio, model_size)
+            words = [
+                {"word": w["word"], "start": round(cursor + w["start"], 3),
+                 "end": round(cursor + w["end"], 3)}
+                for w in words_abs
+            ]
+            dur = max(audio_duration(audio), 0.5)
+        else:
+            words = []
+            dur = max(len(text.split()) * 0.4, 1.0)  # ~150wpm fallback
+        timed.append({
+            "text": text or f"Segmen {len(timed) + 1}",
+            "keywords": list(seg.get("keywords") or []),
+            "words": words,
+            "start": round(cursor, 3),
+            "end": round(cursor + dur, 3),
+            "duration": round(dur, 3),
+        })
+        cursor += dur
+    return timed
 
 
 def align_keywords_to_timestamps(script_segments: list[dict], word_timestamps: list[dict]) -> list[dict]:

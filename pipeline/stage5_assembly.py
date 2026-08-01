@@ -217,11 +217,17 @@ def assemble_video(timed_segments: list[dict], footage_map: dict[int, dict],
                     transition_style: str | None = None,
                     ken_burns: bool | None = None,
                     resolution: tuple[int, int] | None = None,
-                    ffmpeg_preset: str = "medium") -> str:
+                    ffmpeg_preset: str = "medium",
+                    segment_audio_paths: list[str] | None = None) -> str:
     """
     timed_segments: output of Stage 3 (align_keywords_to_timestamps)
     footage_map: {segment_index: {"video_path": ..., ...}} from Stage 4
     narration_audio_path: Stage 3 audio file
+    segment_audio_paths: Fase 3.0 — one audio file per segment, aligned to
+                timed_segments order. When provided (and paths exist), each
+                segment's narration is placed at its own timeline window,
+                so reordering/trimming a segment moves its voice with it.
+                Falls back to narration_audio_path (whole track) otherwise.
     template: Stage 1 template dict (used for pacing + caption_style)
     music_path: optional explicit music file; when None, music is auto-picked
                 from the music/ folder based on the script's mood.
@@ -245,6 +251,11 @@ def assemble_video(timed_segments: list[dict], footage_map: dict[int, dict],
     """
     target_w, target_h = resolution or OUTPUT_RESOLUTION
     avg_shot_duration = template["pacing"]["avg_shot_duration"]
+
+    # Fase 3.0: per-segment narration travels inside timed entries when the
+    # caller doesn't pass an explicit segment_audio_paths list.
+    if segment_audio_paths is None:
+        segment_audio_paths = [s.get("audio_path", "") for s in timed_segments]
 
     transitions_on = (transition_style == "crossfade") if transition_style is not None else TRANSITION_ENABLED
     kenburns_on = ken_burns if ken_burns is not None else KEN_BURNS_ENABLED
@@ -359,9 +370,34 @@ def assemble_video(timed_segments: list[dict], footage_map: dict[int, dict],
         on_progress(15, "Menggabungkan timeline…")
 
     full_video = CompositeVideoClip(video_layers, size=(target_w, target_h))
-    narration_audio = AudioFileClip(narration_audio_path)
-    trimmed_audio = narration_audio.subclipped(0, min(narration_audio.duration, full_video.duration))
-    full_video = full_video.with_audio(trimmed_audio)
+
+    # ---- Narration audio (Fase 3.0: per-segment tracks) -------------------
+    if segment_audio_paths:
+        seg_clips = []
+        for idx, seg in enumerate(timed_segments):
+            if idx >= len(segment_audio_paths) or not segment_audio_paths[idx]:
+                continue
+            seg_path = segment_audio_paths[idx]
+            if not Path(seg_path).exists():
+                print(f"[stage5] Segment audio missing for {idx}: {seg_path} — skipping.")
+                continue
+            a = AudioFileClip(seg_path)
+            seg_start = float(seg.get("start", 0.0) or 0.0)
+            seg_dur = float(seg.get("duration", 0.0) or 0.0)
+            # Voice placed at its timeline window; trim to window length.
+            a = a.with_start(seg_start)
+            if seg_dur > 0:
+                a = a.subclipped(0, min(a.duration, seg_dur))
+            seg_clips.append(a)
+        if seg_clips:
+            narration_audio = CompositeAudioClip(seg_clips).with_duration(full_video.duration)
+        else:
+            narration_audio = AudioFileClip(narration_audio_path)
+            narration_audio = narration_audio.subclipped(0, min(narration_audio.duration, full_video.duration))
+    else:
+        narration_audio = AudioFileClip(narration_audio_path)
+        narration_audio = narration_audio.subclipped(0, min(narration_audio.duration, full_video.duration))
+    full_video = full_video.with_audio(narration_audio)
 
     # ---- Background music + auto-ducking (Fase 1.2) -----------------------
     if music_on:
@@ -382,7 +418,7 @@ def assemble_video(timed_segments: list[dict], footage_map: dict[int, dict],
                 if ducked:
                     music_clip = AudioFileClip(str(ducked))
                     full_video = full_video.with_audio(
-                        CompositeAudioClip([trimmed_audio, music_clip])
+                        CompositeAudioClip([narration_audio, music_clip])
                     )
                     print(f"[stage5] Background music: {chosen.name}")
             else:

@@ -577,6 +577,94 @@ def test_export_project_finishing_metadata():
         check("zip contains narration audio", Path(narration).name in names)
 
 
+def test_script_generate_with_footage():
+    print("\n[1B.3] Generate skrip + ekstraksi footage dalam 1 submit (paralel)")
+    from fastapi.testclient import TestClient
+    import server as server_mod
+    import time
+
+    video = Path("cache") / "test" / "footage_src.mp4"
+    video.parent.mkdir(parents=True, exist_ok=True)
+    # hitam -> putih (kontras maksimal): ContentDetector(threshold=27.0)
+    # baru deteksi boundary; warna pastel content-val-nya di bawah threshold.
+    r = run([
+        "ffmpeg", "-y", "-loglevel", "error",
+        "-f", "lavfi", "-i", "color=c=black:d=2.5:s=320x240:r=30",
+        "-f", "lavfi", "-i", "color=c=white:d=2.5:s=320x240:r=30",
+        "-filter_complex", "[0:v][1:v]concat=n=2:v=1:a=0",
+        "-pix_fmt", "yuv420p", str(video),
+    ])
+    assert r.returncode == 0, r.stderr
+    custom = "Segmen satu membahas hal pertama. Segmen dua membahas hal kedua."
+
+    with TestClient(server_mod.app) as client:
+        with open(video, "rb") as f:
+            resp = client.post("/api/script/generate_with_footage", data={
+                "template_name": "demo_style",
+                "topic": "tes footage paralel",
+                "segments": "2",
+                "language": "id",
+                "custom_script": custom,
+            }, files={"video": ("footage_src.mp4", f, "video/mp4")})
+        check("submit 1 request -> 200", resp.status_code == 200, f"status={resp.status_code}")
+        if resp.status_code != 200:
+            return
+        job_id = resp.json()["job_id"]
+
+        deadline = time.time() + 420
+        job = None
+        while time.time() < deadline:
+            job = client.get(f"/api/jobs/{job_id}").json()
+            if job["status"] in ("done", "error"):
+                break
+            time.sleep(1.5)
+        check("job selesai", job and job["status"] == "done", (job or {}).get("error"))
+        if not job or job["status"] != "done":
+            return
+
+        result = job["result"]
+        check("script punya segments", len(result.get("segments", [])) >= 1, f"n={len(result.get('segments', []))}")
+        fe = result.get("footage_extraction") or {}
+        check("footage_extraction dilaporkan", fe.get("count", 0) >= 1, f"count={fe.get('count')} err={fe.get('error')}")
+        files = fe.get("files") or []
+        check("klip hasil extract ada di disk", len(files) >= 1 and Path(files[0]).exists())
+
+
+def test_footage_match_waits_for_extraction():
+    print("\n[1B.3] /api/footage/match menunggu extraction paralel (race condition)")
+    from fastapi.testclient import TestClient
+    import server as server_mod
+    from job_manager import job_manager
+    import time
+
+    segs, _ = make_timed_segments()
+    with TestClient(server_mod.app) as client:
+        # Fake script job dengan footage extraction yang masih berjalan.
+        fake = job_manager.create()
+        job_manager.update_footage(fake, "running", 40, "Memotong video...")
+
+        resp = client.post("/api/footage/match", json={
+            "segments": segs,
+            "wait_for_script_job": fake,
+        })
+        check("match submit 200", resp.status_code == 200, f"status={resp.status_code}")
+        if resp.status_code != 200:
+            return
+        mjob = resp.json()["job_id"]
+
+        time.sleep(2.5)
+        j = client.get(f"/api/jobs/{mjob}").json()
+        check("match nunggu extraction dulu", j["status"] == "running" and "Menunggu ekstraksi" in (j.get("message") or ""), j.get("message"))
+
+        # Extraction selesai -> match harus lanjut (bukan stuck).
+        job_manager.update_footage(fake, "done", 100, "Selesai")
+        time.sleep(3.0)
+        j2 = client.get(f"/api/jobs/{mjob}").json()
+        check("match lanjut setelah extraction selesai",
+              j2["status"] in ("running", "done") and "Menunggu ekstraksi" not in (j2.get("message") or ""),
+              j2.get("message"))
+
+
 def test_clip_smoke():
     print("\n[2.4/CLIP] Real CLIP model smoke test (env fix verification)")
     from pipeline.stage4_footage import get_clip_matcher, _extract_sample_frames
@@ -589,6 +677,71 @@ def test_clip_smoke():
         check("clip scored", len(ranked) == 1 and isinstance(ranked[0][1], float))
     except Exception as e:
         check("clip scored", False, str(e))
+
+
+def test_fase14_clip_sidecar():
+    print("\n[1B.4] Precomputed CLIP embedding sidecar")
+    from pipeline.stage4_footage import ClipMatcher
+    m = ClipMatcher()
+    clip = make_test_video(Path("cache") / "test" / "sidecar.mp4", "blue", 2.0)
+    sidecar = Path(str(clip) + ".emb.json")
+    sidecar.unlink(missing_ok=True)
+    m._save_sidecar(str(clip), [0.1] * 512)
+    check("sidecar written", sidecar.exists())
+    loaded = m._load_sidecar(str(clip))
+    check("sidecar loads same model", loaded is not None and len(loaded) == 512)
+    sidecar.write_text(json.dumps({"model": "OTHER", "embedding": [1.0]}), encoding="utf-8")
+    check("stale model rejected", m._load_sidecar(str(clip)) is None)
+    sidecar.unlink(missing_ok=True)
+
+
+def test_fase3_per_segment_audio():
+    print("\n[3.0] Per-segment narration audio + concat + retimed segments")
+    from pipeline.stage3_narration import audio_duration, concat_audio_files, transcribe_segment_audio
+    d = Path("cache") / "test" / "fase3"
+    a1 = make_test_audio(d / "seg1.wav", 330, 1.5)
+    a2 = make_test_audio(d / "seg2.wav", 440, 2.0)
+    check("audio_duration reads", abs(audio_duration(str(a1)) - 1.5) < 0.2)
+    full = concat_audio_files([str(a1), str(a2)], str(d / "full.wav"))
+    check("concat creates file", Path(full).exists())
+    check("concat duration ≈ sum", abs(audio_duration(full) - 3.5) < 0.35, f"{audio_duration(full):.2f}")
+    timed = transcribe_segment_audio([
+        {"text": "satu dua tiga", "audio_path": str(a1), "keywords": ["satu"]},
+        {"text": "empat lima", "audio_path": str(a2), "keywords": []},
+    ])
+    check("two timed segments", len(timed) == 2)
+    check("cumulative start", abs(timed[0]["start"]) < 0.01 and timed[1]["start"] >= timed[0]["end"] - 0.01)
+    check("duration from audio", abs(timed[0]["duration"] - 1.5) < 0.35 and abs(timed[1]["duration"] - 2.0) < 0.35,
+          f"{timed[0]['duration']:.2f}/{timed[1]['duration']:.2f}")
+    check("word/keyword keys present", "words" in timed[0] and timed[0]["keywords"] == ["satu"])
+    # Empty-text segment yields ("", 0.0) via per-segment synthesizer helper contract
+    from pipeline.stage3_narration import synthesize_narration_per_segment
+    try:
+        paths, durs = synthesize_narration_per_segment(
+            [{"text": "Halo dunia."}, {"text": ""}], out_dir=str(d / "synth"), provider="pyttsx3")
+        check("empty segment skipped", len(paths) == 2 and paths[1] == "" and durs[1] == 0.0)
+        check("synth files exist", all(os.path.exists(p) for p in paths if p))
+    except ImportError:
+        check("pyttsx3 not installed (skipped)", True, "ImportError")
+
+
+def test_fase34_subtitle_regenerate():
+    print("\n[3.4] Regenerate subtitle endpoint")
+    from fastapi.testclient import TestClient
+    import server as server_mod
+    d = Path("cache") / "test" / "fase34"
+    a1 = make_test_audio(d / "s1.wav", 330, 1.0)
+    with TestClient(server_mod.app) as client:
+        resp = client.post("/api/timeline/regenerate_subtitles", json={"segments": [
+            {"index": 0, "text": "satu dua tiga", "audio_path": str(a1), "keywords": []},
+            {"index": 1, "text": "empat lima enam", "audio_path": "", "keywords": []},
+        ]})
+        check("200 OK", resp.status_code == 200, f"status={resp.status_code}")
+        segs = resp.json()["segments"]
+        check("two segments", len(segs) == 2)
+        check("audio-backed duration", abs(segs[0]["duration"] - 1.0) < 0.35, f"{segs[0]['duration']:.2f}")
+        check("fallback duration (no audio)", segs[1]["duration"] >= 1.0)
+        check("cumulative windows", segs[1]["start"] >= segs[0]["end"] - 0.01)
 
 
 def main():
@@ -604,11 +757,16 @@ def main():
         ("stage4_wikimedia_n1", test_stage4_wikimedia_n1),
         ("stage4_parallel", test_stage4_parallel),
         ("stage5_assembly", test_stage5_assembly),
+        ("clip_sidecar_1b4", test_fase14_clip_sidecar),
+        ("per_segment_audio_30", test_fase3_per_segment_audio),
     ]
     if run_all or "--with-server" in which:
         tests.append(("server_render", test_server_render_endpoint))
         tests.append(("timeline_export_finishing", test_timeline_export_finishing_options))
         tests.append(("export_finishing_metadata", test_export_project_finishing_metadata))
+        tests.append(("script_generate_with_footage", test_script_generate_with_footage))
+        tests.append(("footage_match_wait", test_footage_match_waits_for_extraction))
+        tests.append(("subtitle_regenerate", test_fase34_subtitle_regenerate))
     if run_all or "--with-clip" in which:
         tests.append(("clip_smoke", test_clip_smoke))
 

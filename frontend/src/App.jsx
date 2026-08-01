@@ -437,7 +437,7 @@ function StageTemplate({ template, setTemplate, onNext }) {
 /* ============================================================
    STAGE 2 — SCRIPT DESK
    ============================================================ */
-function StageScript({ template, script, setScript, onNext }) {
+function StageScript({ template, script, setScript, onNext, onScriptJob }) {
   const [mode, setMode] = useState("ai");
   const [topic, setTopic] = useState("");
   const [customScript, setCustomScript] = useState("");
@@ -445,6 +445,11 @@ function StageScript({ template, script, setScript, onNext }) {
   const [styles, setStyles] = useState([]);
   const [styleId, setStyleId] = useState(null); // null = default flat style
   const [language, setLanguage] = useState("id");
+  // Fase 1B.3: footage attached to the same submit, extracted in parallel.
+  const [footageMode, setFootageMode] = useState("none"); // none | file | youtube
+  const [footageFile, setFootageFile] = useState(null);
+  const [footageYoutubeUrl, setFootageYoutubeUrl] = useState("");
+  const [footageExtraction, setFootageExtraction] = useState(null);
   const [job, setJob] = useState(null);
   const [error, setError] = useState(null);
   const cancelRef = useRef(null);
@@ -479,12 +484,37 @@ function StageScript({ template, script, setScript, onNext }) {
     if (!topic.trim() && !customScript.trim()) return;
     setError(null);
     setJob({ progress: 5, message: "Memulai…" });
+    setFootageExtraction(null);
     try {
-      const { job_id } = await apiPostJSON("/api/script/generate", {
-        template_name: template.template_name, topic, segments: Number(numSegments), style_id: styleId, language, custom_script: customScript || null,
-      });
-      cancelRef.current = pollJob(job_id, {
-        onUpdate: (j) => setJob({ progress: j.progress, message: j.message }),
+      let jobId;
+      if (footageMode === "file" && footageFile) {
+        // Fase 1B.3: upload footage + script params in ONE request.
+        const fd = new FormData();
+        fd.append("template_name", template.template_name);
+        fd.append("topic", topic);
+        fd.append("segments", String(Number(numSegments) || 6));
+        fd.append("style_id", styleId || "");
+        fd.append("language", language);
+        if (customScript) fd.append("custom_script", customScript);
+        fd.append("video", footageFile);
+        const res = await apiPostForm("/api/script/generate_with_footage", fd);
+        jobId = res.job_id;
+      } else {
+        const body = {
+          template_name: template.template_name, topic, segments: Number(numSegments), style_id: styleId, language, custom_script: customScript || null,
+        };
+        if (footageMode === "youtube" && footageYoutubeUrl.trim()) {
+          body.footage_youtube_url = footageYoutubeUrl.trim();
+        }
+        const res = await apiPostJSON("/api/script/generate", body);
+        jobId = res.job_id;
+      }
+      if (onScriptJob) onScriptJob(jobId);
+      cancelRef.current = pollJob(jobId, {
+        onUpdate: (j) => {
+          setJob({ progress: j.progress, message: j.message });
+          if (j.footage_extraction) setFootageExtraction(j.footage_extraction);
+        },
         onDone: (result) => { setJob(null); setScript(result); },
         onError: (err) => { setJob(null); setError(err); },
       });
@@ -607,6 +637,55 @@ function StageScript({ template, script, setScript, onNext }) {
               )}
             </div>
           )}
+
+          {/* Fase 1B.3: footage dikirim bareng generate — diproses paralel */}
+          <div className="flex flex-col gap-1.5 mt-1">
+            <span style={{ fontFamily: F.mono, fontSize: 10, color: C.paperFaint, letterSpacing: "0.08em" }}>
+              FOOTAGE SUMBER (OPSIONAL)
+            </span>
+            <div className="flex gap-2 p-1 rounded" style={{ background: C.panel }}>
+              {[["none", "Tanpa"], ["file", "File Lokal"], ["youtube", "Link YouTube"]].map(([m, label]) => (
+                <button key={m} onClick={() => setFootageMode(m)} className="flex-1 py-1.5 rounded"
+                  style={{ border: "none", cursor: "pointer", background: footageMode === m ? C.borderSoft : "transparent", color: footageMode === m ? C.paper : C.paperDim, fontSize: 12, fontWeight: 600 }}>
+                  {label}
+                </button>
+              ))}
+            </div>
+            {footageMode === "file" && (
+              <div className="flex items-center gap-3 relative mt-1">
+                <input type="file" accept="video/mp4,video/webm,video/mov" onChange={(e) => e.target.files && setFootageFile(e.target.files[0])} className="absolute inset-0 opacity-0 cursor-pointer" />
+                <div className="flex-1 px-3 py-2 rounded flex items-center justify-between" style={{ background: C.panel, border: `1px dashed ${C.borderSoft}` }}>
+                  <span style={{ fontFamily: F.mono, fontSize: 11, color: footageFile ? C.cyan : C.paperDim, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {footageFile ? footageFile.name : "Pilih video panjang (.mp4)…"}
+                  </span>
+                  <Upload size={14} color={footageFile ? C.cyan : C.paperDim} />
+                </div>
+              </div>
+            )}
+            {footageMode === "youtube" && (
+              <input type="text" placeholder="https://www.youtube.com/watch?v=..." value={footageYoutubeUrl} onChange={(e) => setFootageYoutubeUrl(e.target.value)} className="w-full px-3 py-2 rounded mt-1" style={{ background: C.panel, border: `1px solid ${C.borderSoft}`, color: C.paper, fontSize: 13 }} />
+            )}
+            {footageMode !== "none" && (
+              <p style={{ fontFamily: F.body, fontSize: 11, color: C.paperFaint, lineHeight: 1.5, marginTop: 2 }}>
+                Footage diproses (dipotong + auto-tag) paralel dengan riset & penulisan naskah — jadi pas sampai tahap Footage, klip lokal udah siap dipakai.
+              </p>
+            )}
+            {footageExtraction && footageExtraction.status === "running" && (
+              <div className="mt-1.5 px-3 py-2 rounded" style={{ background: C.panel, border: `1px solid ${C.borderSoft}` }}>
+                <div style={{ fontFamily: F.mono, fontSize: 10.5, color: C.cyan, marginBottom: 4 }}>
+                  ✂️ EKSTRAKSI FOOTAGE: {footageExtraction.message || "berjalan..."}
+                </div>
+                <div style={{ width: "100%", height: 3, background: C.borderSoft, borderRadius: 2, overflow: "hidden" }}>
+                  <div style={{ width: `${footageExtraction.progress || 0}%`, height: "100%", background: C.cyan, borderRadius: 2, transition: "width 0.4s" }} />
+                </div>
+              </div>
+            )}
+            {footageExtraction && footageExtraction.status === "error" && (
+              <p style={{ fontFamily: F.body, fontSize: 11, color: C.red, marginTop: 2 }}>
+                ⚠️ Ekstraksi footage gagal: {footageExtraction.message} — video tetap bisa dibuat pakai footage internet.
+              </p>
+            )}
+          </div>
 
           {error && <ErrorBanner error={error} onRetry={runGenerate} />}
           {job && <ProgressBar progress={job.progress} message={job.message} />}
@@ -858,7 +937,7 @@ function StageNarration({ script, narration, setNarration, onNext }) {
 /* ============================================================
    STAGE 4 — FOOTAGE MATCHING BOARD
    ============================================================ */
-function StageFootage({ narration, footageData, setFootageData, picks, setPicks, onNext }) {
+function StageFootage({ narration, footageData, setFootageData, picks, setPicks, onNext, scriptJobId }) {
   const [activeSeg, setActiveSeg] = useState(0);
   const [exportJob, setExportJob] = useState(null);
 
@@ -912,7 +991,11 @@ function StageFootage({ narration, footageData, setFootageData, picks, setPicks,
     setError(null);
     setJob({ progress: 2, message: "Memulai…" });
     try {
-      const { job_id } = await apiPostJSON("/api/footage/match", { segments: narration.segments });
+      const body = { segments: narration.segments };
+      // Fase 1B.3: kalau script job bawa footage extraction paralel, tunggu
+      // sampai selesai biar klip lokal kebaca sebelum CLIP scoring.
+      if (scriptJobId) body.wait_for_script_job = scriptJobId;
+      const { job_id } = await apiPostJSON("/api/footage/match", body);
       cancelRef.current = pollJob(job_id, {
         onUpdate: (j) => setJob({ progress: j.progress, message: j.message }),
         onDone: (result) => {
@@ -1275,6 +1358,9 @@ export default function Ritme() {
   const [narration, setNarration] = useStickyState(null, "ritme_narration");
   const [footageData, setFootageData] = useStickyState(null, "ritme_footageData");
   const [picks, setPicks] = useStickyState({}, "ritme_picks");
+  // Fase 1B.3: script job id (bisa bawa footage extraction paralel) —
+  // di-forward ke Stage 4 supaya match nunggu ekstraksi selesai.
+  const [scriptJobId, setScriptJobId] = useState(null);
 
   const handleReset = () => {
     if (window.confirm("Reset seluruh progress dan mulai project baru?")) {
@@ -1327,9 +1413,9 @@ export default function Ritme() {
 
       <div className="px-4 sm:px-6 py-6 max-w-3xl mx-auto">
         {active === 1 && <StageTemplate template={template} setTemplate={setTemplate} onNext={goNext} />}
-        {active === 2 && template && <StageScript template={template} script={script} setScript={setScript} onNext={goNext} />}
+        {active === 2 && template && <StageScript template={template} script={script} setScript={setScript} onNext={goNext} onScriptJob={setScriptJobId} />}
         {active === 3 && script && <StageNarration script={script} narration={narration} setNarration={setNarration} onNext={goNext} />}
-        {active === 4 && narration && <StageFootage narration={narration} footageData={footageData} setFootageData={setFootageData} picks={picks} setPicks={setPicks} onNext={goNext} />}
+        {active === 4 && narration && <StageFootage narration={narration} footageData={footageData} setFootageData={setFootageData} picks={picks} setPicks={setPicks} onNext={goNext} scriptJobId={scriptJobId} />}
         {active === 5 && narration && footageData && <TimelineEditor narration={narration} footageData={footageData} picks={picks} />}
       </div>
 

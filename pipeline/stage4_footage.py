@@ -30,6 +30,7 @@ Roadmap notes (see RITME_ROADMAP.md):
     shared ClipMatcher singleton (model loaded once per process).
 """
 import concurrent.futures
+import json
 import subprocess
 from pathlib import Path
 from typing import Optional
@@ -446,6 +447,65 @@ class ClipMatcher:
         ranked = self.rank_all(keyword, candidate_video_paths)
         return ranked[0] if ranked else None
 
+    def embed_video(self, video_path: str, n_frames: int | None = None) -> Optional[list]:
+        """
+        Fase 1B.4: mean image embedding over n_frames sampled frames, L2-
+        normalized. Returns a plain list of floats (JSON-serializable) or None
+        if no frame could be scored. Used both to precompute sidecars at
+        extract time and to score clips that lack a sidecar.
+        """
+        self._lazy_load()
+        from PIL import Image
+
+        n_frames = n_frames or CLIP_SAMPLE_FRAMES
+        frames = _extract_sample_frames(video_path, n_frames=n_frames)
+        if not frames:
+            return None
+        vecs = []
+        for frame_path, _at in frames:
+            try:
+                image = self._preprocess(Image.open(frame_path)).unsqueeze(0).to(self.device)
+                with self._torch.no_grad():
+                    feats = self._model.encode_image(image)
+                    feats /= feats.norm(dim=-1, keepdim=True)
+                    vecs.append(feats[0])
+            except Exception as e:
+                print(f"[stage4] CLIP embedding failed for {frame_path}: {e}")
+        if not vecs:
+            return None
+        mean = sum(v for v in vecs) / len(vecs)
+        mean /= mean.norm()
+        return mean.cpu().tolist()
+
+    def _load_sidecar(self, video_path: str) -> Optional[list]:
+        """Fase 1B.4: cached embedding for a clip, if fresh and same model."""
+        sidecar = Path(video_path + ".emb.json")
+        if not sidecar.exists():
+            return None
+        try:
+            data = json.loads(sidecar.read_text(encoding="utf-8"))
+            if data.get("model") != self.model_name:
+                return None
+            if Path(video_path).stat().st_mtime > sidecar.stat().st_mtime + 2:
+                return None  # clip changed after embedding was written
+            emb = data.get("embedding")
+            return emb if isinstance(emb, list) and len(emb) > 0 else None
+        except Exception:
+            return None
+
+    def _save_sidecar(self, video_path: str, embedding: list):
+        """Best-effort write of a computed embedding for future runs."""
+        try:
+            from datetime import datetime, timezone
+            Path(video_path + ".emb.json").write_text(json.dumps({
+                "clip_path": str(Path(video_path).resolve()),
+                "embedding": [round(float(x), 6) for x in embedding],
+                "model": self.model_name,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            }), encoding="utf-8")
+        except Exception:
+            pass
+
     def rank_all(self, keyword: str, candidate_video_paths: list[str]) -> list[tuple[str, float]]:
         """Returns [(video_path, score), ...] for every candidate that could be
         scored, sorted best-first. Used when a human should review multiple
@@ -455,6 +515,10 @@ class ClipMatcher:
         across its duration (20%/50%/80% by default) and the scores averaged —
         a clip whose second half matches the keyword no longer loses to one
         whose first second happens to match.
+
+        Fase 1B.4: a clip with a fresh sidecar embedding (<clip>.emb.json)
+        skips frame extraction entirely — the precomputed vector is dotted
+        with the keyword embedding, which makes local matching nearly free.
         """
         self._lazy_load()
         from PIL import Image
@@ -466,11 +530,21 @@ class ClipMatcher:
 
         scored = []
         for video_path in candidate_video_paths:
+            emb = self._load_sidecar(video_path)
+            if emb is not None:
+                import numpy as _np
+                emb_vec = self._torch.tensor(emb, dtype=self._torch.float32).to(self.device)
+                emb_vec /= emb_vec.norm()
+                score = (emb_vec @ text_features.T).item()
+                scored.append((video_path, score))
+                continue
+
             frames = _extract_sample_frames(video_path, n_frames=CLIP_SAMPLE_FRAMES)
             if not frames:
                 # No frame could be extracted (corrupt file?) — skip it.
                 continue
             frame_scores = []
+            frame_vecs = []
             for frame_path, _at in frames:
                 try:
                     image = self._preprocess(Image.open(frame_path)).unsqueeze(0).to(self.device)
@@ -478,10 +552,15 @@ class ClipMatcher:
                         image_features = self._model.encode_image(image)
                         image_features /= image_features.norm(dim=-1, keepdim=True)
                         frame_scores.append((image_features @ text_features.T).item())
+                        frame_vecs.append(image_features[0])
                 except Exception as e:
                     print(f"[stage4] CLIP scoring failed for {frame_path}: {e}")
             if frame_scores:
                 scored.append((video_path, sum(frame_scores) / len(frame_scores)))
+                if frame_vecs:
+                    mean = sum(v for v in frame_vecs) / len(frame_vecs)
+                    mean /= mean.norm()
+                    self._save_sidecar(video_path, mean.cpu().tolist())
 
         scored.sort(key=lambda x: x[1], reverse=True)
         return scored

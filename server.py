@@ -22,6 +22,7 @@ import os
 import shutil
 import sys
 import uuid
+import threading
 import torch
 from pathlib import Path
 import faulthandler
@@ -136,6 +137,8 @@ class ScriptRequest(BaseModel):
     style_id: str | None = None
     language: str = "id"
     custom_script: str | None = None
+    # Fase 1B.3: optional footage source processed in parallel with script gen.
+    footage_youtube_url: str | None = None
 
 
 @app.get("/api/script/styles")
@@ -143,30 +146,132 @@ def get_script_styles():
     return stage2_script.list_script_styles()
 
 
-@app.post("/api/script/generate")
-def generate_script(req: ScriptRequest):
+def _run_script_job(job_id: str, req, footage_video_path: str | None = None) -> dict:
+    """
+    Shared Stage-2 runner. If a long footage file (local upload path or
+    YouTube URL) is attached, footage extraction starts on a background
+    thread IN PARALLEL with web research + script writing. The job's
+    `footage_extraction` field carries sub-progress so the UI shows one
+    unified job. Returns the script dict (result of the job).
+    """
+    import yt_dlp  # lazy — heavy import, only needed when footage attached
+
+    extract_result = {}
+    footage_thread = None
+
+    if footage_video_path or req.footage_youtube_url:
+        job_manager.update_footage(job_id, "pending", 0, "Menunggu...")
+
+        def _extract():
+            try:
+                dest = footage_video_path
+                actual_topic = req.topic.strip()
+                if req.footage_youtube_url:
+                    job_manager.update_footage(job_id, "running", 2, "Mengunduh video dari YouTube...")
+                    dest = UPLOADS_DIR / f"{uuid.uuid4().hex}_youtube.mp4"
+                    ydl_opts = {"format": "best[height<=1080]", "outtmpl": str(dest), "quiet": True}
+                    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                        info = ydl.extract_info(req.footage_youtube_url, download=True)
+                        if info and 'title' in info and not actual_topic:
+                            actual_topic = " ".join(info['title'].split()[:4])
+
+                def on_progress(message, pct):
+                    job_manager.update_footage(job_id, "running", pct, message)
+
+                job_manager.update_footage(job_id, "running", 10, "Memulai deteksi scene...")
+                files = footage_extractor.extract_clips(
+                    str(dest),
+                    output_dir="outputs/extracted_footage",
+                    threshold=27.0,
+                    min_duration_sec=2.0,
+                    base_name=None,
+                    on_progress=on_progress,
+                    topic=actual_topic,
+                )
+                extract_result["files"] = files
+                extract_result["count"] = len(files)
+                extract_result["output_dir"] = "outputs/extracted_footage"
+                job_manager.update_footage(job_id, "done", 100, "Selesai")
+            except Exception as e:
+                job_manager.update_footage(job_id, "error", 100, str(e))
+                extract_result["error"] = str(e)
+
+        footage_thread = threading.Thread(target=_extract, daemon=True)
+        footage_thread.start()
+        job_manager.update_footage(job_id, "running", 0, "Ekstraksi footage berjalan paralel...")
+
     try:
-        template = stage1_template.load_template(req.template_name)
-    except FileNotFoundError as e:
-        raise HTTPException(404, str(e))
-
-    job_id = job_manager.create()
-
-    def _run(job_id):
         if req.custom_script:
             job_manager.update(job_id, message="Menganalisis naskah buatan sendiri…", progress=30)
             sources = []
         else:
             job_manager.update(job_id, message="Riset web…", progress=15)
             sources = stage2_script.web_research(req.topic)
-            
+
         job_manager.update(job_id, message="Menulis naskah…", progress=50)
         script = stage2_script.generate_script(
-            req.topic, template, target_segments=req.segments,
+            req.topic, stage1_template.load_template(req.template_name),
+            target_segments=req.segments,
             research_results=sources, style_id=req.style_id,
             language=req.language, custom_script=req.custom_script
         )
-        return script
+    finally:
+        # Wait for footage extraction to finish so a single job result
+        # carries both script + extraction outcome.
+        if footage_thread is not None:
+            footage_thread.join(timeout=900)
+
+    if footage_thread is not None:
+        script["footage_extraction"] = extract_result
+    return script
+
+
+@app.post("/api/script/generate")
+def generate_script(req: ScriptRequest):
+    try:
+        stage1_template.load_template(req.template_name)
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e))
+
+    job_id = job_manager.create()
+
+    def _run(job_id):
+        return _run_script_job(job_id, req)
+
+    job_manager.run_async(job_id, _run)
+    return {"job_id": job_id}
+
+
+@app.post("/api/script/generate_with_footage")
+async def generate_script_with_footage(
+    template_name: str = Form(...),
+    topic: str = Form(...),
+    segments: int = Form(8),
+    style_id: str = Form(None),
+    language: str = Form("id"),
+    custom_script: str = Form(None),
+    video: UploadFile = File(...),
+):
+    """Same as /api/script/generate but accepts an uploaded long footage file
+    that is extracted (scene-split + auto-tag) in parallel with script gen."""
+    try:
+        stage1_template.load_template(template_name)
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e))
+
+    _validate_upload(video, ALLOWED_VIDEO_TYPES)
+    dest = UPLOADS_DIR / f"{uuid.uuid4().hex}_{Path(video.filename).name}"
+    with open(dest, "wb") as f:
+        shutil.copyfileobj(video.file, f)
+
+    req = ScriptRequest(
+        template_name=template_name, topic=topic, segments=segments,
+        style_id=style_id, language=language, custom_script=custom_script,
+    )
+    job_id = job_manager.create()
+
+    def _run(job_id):
+        return _run_script_job(job_id, req, footage_video_path=str(dest))
 
     job_manager.run_async(job_id, _run)
     return {"job_id": job_id}
@@ -190,11 +295,32 @@ def generate_narration(req: NarrationRequest):
         else:
             msg = "Sintesis suara..."
         job_manager.update(job_id, message=msg, progress=20)
-        audio_path = stage3_narration.synthesize_narration(req.segments, provider=req.tts_provider)
+        # Fase 3.0: synthesize per segment (each voice file travels with its
+        # timeline clip), then rebuild the full track by concatenation so the
+        # whisper transcription & music ducking still see one continuous audio.
+        seg_paths, seg_durs = stage3_narration.synthesize_narration_per_segment(
+            req.segments, provider=req.tts_provider)
+        if all(seg_paths):
+            try:
+                audio_path = stage3_narration.concat_audio_files(
+                    seg_paths, str(CACHE_DIR / "audio" / "narration.wav"))
+            except Exception as e:
+                print(f"[server] Segment concat failed ({e}) — fallback full synth.")
+                audio_path = stage3_narration.synthesize_narration(req.segments, provider=req.tts_provider)
+                seg_paths, seg_durs = [], []
+        else:
+            audio_path = stage3_narration.synthesize_narration(req.segments, provider=req.tts_provider)
+            seg_paths, seg_durs = [], []
         job_manager.update(job_id, message="Transkripsi timing per kata…", progress=60)
         word_timestamps = stage3_narration.transcribe_with_timestamps(audio_path)
         timed = stage3_narration.align_keywords_to_timestamps(req.segments, word_timestamps)
-        return {"audio_path": audio_path, "audio_url": f"/outputs/audio/{Path(audio_path).name}", "segments": timed}
+        return {
+            "audio_path": audio_path,
+            "audio_url": f"/outputs/audio/{Path(audio_path).name}",
+            "segments": timed,
+            "segment_audio_paths": seg_paths,
+            "segment_audio_durations": seg_durs,
+        }
 
     job_manager.run_async(job_id, _run)
     return {"job_id": job_id}
@@ -237,6 +363,11 @@ async def upload_narration(
 # ============================================================
 class FootageRequest(BaseModel):
     segments: list[dict]  # timed segments from stage 3, each has "keywords"
+    # Fase 1B.3 race-condition handling: if set to a script job id that has
+    # a parallel footage extraction running, block until that extraction
+    # finishes (or fails) before starting to match — so local footage is
+    # ready before CLIP scores segments against it.
+    wait_for_script_job: str | None = None
 
 
 @app.post("/api/footage/match")
@@ -244,8 +375,26 @@ def match_footage(req: FootageRequest):
     job_id = job_manager.create()
 
     def _run(job_id):
+        # Wait for a parallel footage extraction attached to a script job.
+        if req.wait_for_script_job:
+            script_job = job_manager.get(req.wait_for_script_job)
+            if script_job and script_job.get("footage_extraction"):
+                fe = script_job["footage_extraction"]
+                if fe.get("status") in ("pending", "running"):
+                    job_manager.update(job_id, progress=0, message="Menunggu ekstraksi footage selesai…")
+                    import time as _time
+                    deadline = _time.time() + 900  # 15 min cap
+                    while _time.time() < deadline:
+                        fe = (job_manager.get(req.wait_for_script_job) or {}).get("footage_extraction") or {}
+                        if fe.get("status") not in ("pending", "running"):
+                            break
+                        _time.sleep(1.5)
+                    if fe.get("status") == "error":
+                        print(f"[stage4] Parallel footage extraction errored: {fe.get('message')}")
+                    job_manager.update(job_id, progress=2, message=f"Ekstraksi footage: {fe.get('message') or 'selesai'} — melanjutkan pencarian…")
+
         def on_progress(done, total, seg):
-            pct = int(done / total * 100)
+            pct = 2 + int(done / total * 96)
             job_manager.update(job_id, progress=pct, message=f"Segmen {done}/{total}: {seg['keywords'][0]}")
 
         results = stage4_footage.match_all_segments(req.segments, on_progress=on_progress, top_n=4)
@@ -515,6 +664,8 @@ class TimelineSegment(BaseModel):
     end_trim: float = 0.0    # seconds to trim from end of source
     duration: float = 3.0    # final duration after trimming
     keywords: list[str] = []
+    audio_path: str = ""     # Fase 3.0: per-segment narration audio
+    words: list[dict] = []   # Fase 3.4: per-word subtitle timing (karaoke)
 
 class TimelineExportRequest(BaseModel):
     segments: list[TimelineSegment]
@@ -545,6 +696,10 @@ def _timeline_to_stage5(segments: list[TimelineSegment]):
             "start": cursor, "end": cursor + dur, "duration": dur,
             "trim_start": float(seg.start_trim or 0.0),
             "trim_end": float(seg.end_trim or 0.0),
+            # Fase 3.0: per-segment voice travels with the clip.
+            "audio_path": seg.audio_path or "",
+            # Fase 3.4: per-word timing regenerated after edits.
+            "words": list(seg.words or []),
         })
         footage[len(footage)] = {"video_path": seg.video_path}
         cursor += dur
@@ -617,6 +772,23 @@ def timeline_preview(req: TimelineExportRequest):
     if not os.path.exists(out_path):
         raise HTTPException(500, "Preview generation failed")
     return FileResponse(out_path, media_type="video/mp4")
+
+class SubtitleRegenRequest(BaseModel):
+    segments: list[dict]  # [{index, text, audio_path, keywords?}]
+
+
+@app.post("/api/timeline/regenerate_subtitles")
+def regenerate_subtitles(req: SubtitleRegenRequest):
+    """
+    Fase 3.4: after timeline edits, re-transcribe each segment's own audio and
+    return freshly timed segments (per-word timestamps + cumulative windows).
+    """
+    try:
+        timed = stage3_narration.transcribe_segment_audio([dict(s) for s in req.segments])
+    except Exception as e:
+        raise HTTPException(500, f"Subtitle regeneration failed: {e}")
+    return {"segments": timed}
+
 
 # Static file serving: outputs (video/audio previews) + frontend
 # ============================================================

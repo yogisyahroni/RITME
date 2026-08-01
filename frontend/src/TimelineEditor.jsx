@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { Play, Download, ChevronRight, Trash2, ArrowUp, ArrowDown, Scissors, Clapperboard, Check, Loader2, AlertTriangle, Info, Film } from "lucide-react";
+import { Play, Download, Trash2, ArrowUp, ArrowDown, Scissors, Clapperboard, Loader2, AlertTriangle, Info, Film, Captions, Undo2, Redo2, Music2, GripVertical, ZoomIn, Zap } from "lucide-react";
 
 const C = {
   bg: "#15130F",
@@ -15,6 +15,8 @@ const C = {
   paperDim: "#9C9384",
   paperFaint: "#6B6355",
   red: "#E8542E",
+  music: "#8B5CF6",
+  caption: "#7FB88A",
 };
 
 const F = {
@@ -46,6 +48,16 @@ function PrimaryButton({ children, onClick, icon: Icon, disabled, loading, varia
   );
 }
 
+function IconButton({ onClick, icon: Icon, disabled, title, color }) {
+  return (
+    <button onClick={onClick} disabled={disabled} title={title}
+      className="flex items-center justify-center rounded"
+      style={{ width: 26, height: 26, background: "none", border: "none", cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.3 : 1, padding: 0 }}>
+      <Icon size={14} color={color || C.paperDim} />
+    </button>
+  );
+}
+
 function TimelineEditor({ narration, footageData, picks }) {
   const [segments, setSegments] = useState([]);
   const [previewUrl, setPreviewUrl] = useState(null);
@@ -53,6 +65,11 @@ function TimelineEditor({ narration, footageData, picks }) {
   const [error, setError] = useState(null);
   const [result, setResult] = useState(null);
   const [playing, setPlaying] = useState(false);
+  const [zoom, setZoom] = useState(1.0);           // 3.2 zoom
+  const [autoPreview, setAutoPreview] = useState(false); // 3.5 auto preview
+  const [dragIdx, setDragIdx] = useState(null);    // 3.2 drag reorder
+  const [history, setHistory] = useState([]);      // 3.5 undo/redo
+  const [future, setFuture] = useState([]);
   const [finishing, setFinishing] = useState({
     add_music: false,
     music_mood: "calm",
@@ -62,6 +79,9 @@ function TimelineEditor({ narration, footageData, picks }) {
   });
   const videoRef = useRef(null);
   const cancelRef = useRef(null);
+  const firstRunRef = useRef(true);
+
+  const pxPerSec = 28 * zoom;
 
   useEffect(() => {
     if (!narration?.segments) return;
@@ -75,12 +95,33 @@ function TimelineEditor({ narration, footageData, picks }) {
         start_trim: 0,
         end_trim: 0,
         keywords: s.keywords || [],
+        words: s.words || [],
       };
     });
     setSegments(segs);
+    firstRunRef.current = true;
   }, [narration, footageData, picks]);
 
   useEffect(() => () => cancelRef.current && cancelRef.current(), []);
+
+  const pushHistory = () => {
+    setHistory(h => [...h.slice(-59), segments]);
+    setFuture([]);
+  };
+
+  const undo = () => {
+    if (!history.length) return;
+    setFuture(f => [...f, segments]);
+    setSegments(history[history.length - 1]);
+    setHistory(h => h.slice(0, -1));
+  };
+
+  const redo = () => {
+    if (!future.length) return;
+    setHistory(h => [...h, segments]);
+    setSegments(future[future.length - 1]);
+    setFuture(f => f.slice(0, -1));
+  };
 
   const updateSegment = (idx, updates) => {
     setSegments(prev => prev.map((s, i) => i === idx ? { ...s, ...updates } : s));
@@ -88,6 +129,7 @@ function TimelineEditor({ narration, footageData, picks }) {
 
   const moveSegment = (idx, direction) => {
     if ((direction === -1 && idx === 0) || (direction === 1 && idx === segments.length - 1)) return;
+    pushHistory();
     const newSegs = [...segments];
     const temp = newSegs[idx];
     newSegs[idx] = newSegs[idx + direction];
@@ -95,7 +137,18 @@ function TimelineEditor({ narration, footageData, picks }) {
     setSegments(newSegs);
   };
 
+  const reorderTo = (to) => {
+    if (dragIdx === null || dragIdx === to) return;
+    pushHistory();
+    const arr = [...segments];
+    const [item] = arr.splice(dragIdx, 1);
+    arr.splice(to, 0, item);
+    setSegments(arr);
+    setDragIdx(null);
+  };
+
   const removeSegment = (idx) => {
+    pushHistory();
     setSegments(prev => prev.filter((_, i) => i !== idx));
   };
 
@@ -105,13 +158,98 @@ function TimelineEditor({ narration, footageData, picks }) {
     if (edge === "end") updateSegment(idx, { end_trim: Math.max(0, Math.min(value, seg.duration - 0.5)) });
   };
 
+  // 3.2 — trim-by-handle: drag kiri/kanan clip di track
+  const startTrimDrag = (idx, edge, e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    pushHistory();
+    const startX = e.clientX;
+    const seg = segments[idx];
+    const orig = { start_trim: seg.start_trim, end_trim: seg.end_trim, duration: seg.duration };
+    const onMove = (ev) => {
+      const dx = (ev.clientX - startX) / pxPerSec;
+      if (edge === "start") {
+        const maxTrim = Math.max(orig.duration - orig.end_trim - 0.5, 0);
+        updateSegment(idx, { start_trim: Math.min(Math.max(orig.start_trim + dx, 0), maxTrim) });
+      } else {
+        const maxTrim = Math.max(orig.duration - orig.start_trim - 0.5, 0);
+        updateSegment(idx, { end_trim: Math.min(Math.max(orig.end_trim - dx, 0), maxTrim) });
+      }
+    };
+    const onUp = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
+
+  // 3.2 — razor split: bagi 1 segmen jadi 2 (teks dibagi dua)
+  const splitSegment = (idx) => {
+    const s = segments[idx];
+    const words = (s.narration_text || "").trim().split(/\s+/).filter(Boolean);
+    const mid = Math.max(1, Math.floor(words.length / 2));
+    const textA = words.slice(0, mid).join(" ");
+    const textB = words.slice(mid).join(" ");
+    const dur = Math.max(s.duration, 1.0);
+    pushHistory();
+    const newSegs = [...segments];
+    const a = { ...s, narration_text: textA || s.narration_text, duration: dur / 2 };
+    const b = { ...s, narration_text: textB || s.narration_text, duration: dur - dur / 2 };
+    newSegs.splice(idx, 1, a, b);
+    setSegments(newSegs);
+  };
+
+  // 3.3 — swap footage: ganti video segmen dari kandidat lain
+  const swapFootage = (idx, candIdx) => {
+    const cands = footageData?.[String(segments[idx].index)]?.candidates || [];
+    const c = cands[candIdx];
+    if (!c) return;
+    pushHistory();
+    updateSegment(idx, { video_path: c.video_path });
+  };
+
+  // 3.4 — re-transcribe per-segment audio setelah edit
+  const [subtitleBusy, setSubtitleBusy] = useState(false);
+  const regenerateSubtitles = async () => {
+    setSubtitleBusy(true);
+    setError(null);
+    try {
+      const res = await apiPostJSON("/api/timeline/regenerate_subtitles", {
+        segments: segments.map(s => ({
+          index: s.index,
+          text: s.narration_text,
+          audio_path: narration?.segment_audio_paths?.[s.index] || "",
+          keywords: s.keywords || [],
+        })),
+      });
+      const timed = res.segments || [];
+      setSegments(prev => prev.map((s, i) => ({
+        ...s,
+        duration: timed[i]?.duration || s.duration,
+        words: timed[i]?.words || [],
+      })));
+    } catch (e) { setError(String(e)); }
+    finally { setSubtitleBusy(false); }
+  };
+
   const exportTimeline = async (preview = false) => {
     setError(null);
     setJob({ progress: 5, message: preview ? "Membuat preview..." : "Merender video..." });
     try {
       const endpoint = preview ? "/api/timeline/preview" : "/api/timeline/export";
       const body = {
-        segments: segments.filter(s => s.video_path),
+        segments: segments.filter(s => s.video_path).map(s => ({
+          index: s.index,
+          video_path: s.video_path,
+          narration_text: s.narration_text,
+          duration: s.duration,
+          start_trim: s.start_trim,
+          end_trim: s.end_trim,
+          keywords: s.keywords || [],
+          audio_path: narration?.segment_audio_paths?.[s.index] || "",
+          words: s.words || [],
+        })),
         narration_audio_path: narration?.audio_path || "",
         output_name: `ritme_${Date.now()}`,
         template_name: narration?.template_name || "",
@@ -121,24 +259,29 @@ function TimelineEditor({ narration, footageData, picks }) {
         transition_style: finishing.transition_style,
         ken_burns: finishing.ken_burns,
       };
+      const blob = await fetch(endpoint, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)
+      }).then(r => { if (!r.ok) throw new Error((preview ? "Preview" : "Export") + " failed"); return r.blob(); });
+      const url = URL.createObjectURL(blob);
       if (preview) {
-        const blob = await fetch(endpoint, {
-          method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)
-        }).then(r => { if (!r.ok) throw new Error("Preview failed"); return r.blob(); });
-        const url = URL.createObjectURL(blob);
         setPreviewUrl(url);
         setJob(null);
         if (videoRef.current) { videoRef.current.src = url; setPlaying(true); }
       } else {
-        const blob = await fetch(endpoint, {
-          method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)
-        }).then(r => { if (!r.ok) throw new Error("Export failed"); return r.blob(); });
-        const url = URL.createObjectURL(blob);
         setResult(url);
         setJob(null);
       }
     } catch (e) { setJob(null); setError(String(e)); }
   };
+
+  // 3.5 — auto-preview: debounce 1.5s setelah edit (kalau toggle nyala)
+  const segSignature = JSON.stringify(segments.map(s => ({ v: s.video_path, d: s.duration, st: s.start_trim, et: s.end_trim, t: s.narration_text })));
+  useEffect(() => {
+    if (firstRunRef.current) { firstRunRef.current = false; return; }
+    if (!autoPreview || !segments.length || job) return;
+    const t = setTimeout(() => exportTimeline(true), 1500);
+    return () => clearTimeout(t);
+  }, [segSignature, autoPreview]);
 
   const downloadVideo = () => {
     if (!result) return;
@@ -150,40 +293,182 @@ function TimelineEditor({ narration, footageData, picks }) {
 
   const totalDuration = segments.reduce((a, s) => a + Math.max(s.duration - s.start_trim - s.end_trim, 0.5), 0);
 
+  // Posisi kumulatif tiap segmen (detik) — buat layout track
+  const segStarts = [];
+  {
+    let acc = 0;
+    for (const s of segments) {
+      segStarts.push(acc);
+      acc += Math.max(s.duration - s.start_trim - s.end_trim, 0.5);
+    }
+  }
+
   const colors = [C.tally, "#6FE7DD", "#E8A33D", "#7FB88A", "#8B5CF6", "#F472B6", "#FBBF24", "#34D399"];
+  const timelineW = Math.max(segments.length * 160, totalDuration * pxPerSec, 420);
+
+  // Ruler ticks tiap 5 detik
+  const ticks = [];
+  for (let t = 0; t <= totalDuration + 0.001; t += 5) ticks.push(t);
+
+  const musicLabel = finishing.add_music
+    ? `Musik: ${finishing.music_mood}`
+    : "Musik: mati";
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <span style={{ fontFamily: F.mono, fontSize: 12, color: C.cyan, letterSpacing: "0.08em" }}>05 / TIMELINE EDITOR</span>
-        <h2 style={{ fontFamily: F.display, fontSize: 22, color: C.paper, fontWeight: 700, marginTop: 4 }}>Edit Timeline Manual</h2>
-        <p style={{ fontFamily: F.body, fontSize: 13, color: C.paperDim, marginTop: 4 }}>{segments.length} segmen · {fmt(totalDuration)} total</p>
-      </div>
-      <div className="flex flex-col gap-1">
-        <span style={{ fontFamily: F.mono, fontSize: 10, color: C.paperFaint, letterSpacing: "0.08em", marginBottom: 4 }}>TIMELINE</span>
-        <div className="flex" style={{ height: 36, gap: 2, borderRadius: 4, overflow: "hidden" }}>
-          {segments.map((s, i) => {
-            const dur = Math.max(s.duration - s.start_trim - s.end_trim, 0.5);
-            const w = totalDuration > 0 ? (dur / totalDuration) * 100 : 100 / segments.length;
-            return <div key={i} style={{ width: `${w}%`, background: colors[i % colors.length], display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", minWidth: 30 }}>
-              <span style={{ fontFamily: F.mono, fontSize: 9, color: "#fff", fontWeight: 600, textShadow: "0 1px 2px rgba(0,0,0,0.5)" }}>{fmt(dur)}</span>
-            </div>;
-          })}
+      {/* ===== Header + toolbar (3.5 undo/redo, 3.2 zoom) ===== */}
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <span style={{ fontFamily: F.mono, fontSize: 12, color: C.cyan, letterSpacing: "0.08em" }}>05 / TIMELINE EDITOR</span>
+          <h2 style={{ fontFamily: F.display, fontSize: 22, color: C.paper, fontWeight: 700, marginTop: 4 }}>Edit Timeline Manual</h2>
+          <p style={{ fontFamily: F.body, fontSize: 13, color: C.paperDim, marginTop: 4 }}>{segments.length} segmen · {fmt(totalDuration)} total</p>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <IconButton onClick={undo} icon={Undo2} disabled={!history.length} title="Undo (Ctrl+Z)" />
+          <IconButton onClick={redo} icon={Redo2} disabled={!future.length} title="Redo (Ctrl+Y)" />
+          <div className="flex items-center gap-1 px-2 rounded" style={{ background: C.panel, border: `1px solid ${C.borderSoft}`, height: 30 }}>
+            <ZoomIn size={13} color={C.paperFaint} />
+            <input type="range" min={0.5} max={3} step={0.1} value={zoom} onChange={e => setZoom(parseFloat(e.target.value))}
+              style={{ width: 90, accentColor: C.tally }} />
+            <span style={{ fontFamily: F.mono, fontSize: 10, color: C.paperDim, width: 34 }}>{zoom.toFixed(1)}x</span>
+          </div>
+          <label className="flex items-center gap-2 px-2 rounded" style={{ background: C.panel, border: `1px solid ${C.borderSoft}`, height: 30, cursor: "pointer" }}>
+            <input type="checkbox" checked={autoPreview} onChange={e => setAutoPreview(e.target.checked)} style={{ accentColor: C.tally }} />
+            <Zap size={12} color={autoPreview ? C.amber : C.paperFaint} />
+            <span style={{ fontFamily: F.mono, fontSize: 10, color: C.paperDim }}>Auto-preview</span>
+          </label>
+          <PrimaryButton onClick={regenerateSubtitles} disabled={subtitleBusy || segments.length === 0} loading={subtitleBusy} icon={Captions}>Sinkronkan Subtitle</PrimaryButton>
         </div>
       </div>
+
+      {/* ===== Multi-track timeline (3.1) ===== */}
+      <div className="flex flex-col gap-3 rounded p-4" style={{ background: C.panel, border: `1px solid ${C.borderSoft}`, overflowX: "auto" }}>
+        {/* Ruler */}
+        <div className="relative" style={{ height: 18, width: timelineW }}>
+          {ticks.map(t => (
+            <div key={t} className="absolute flex flex-col" style={{ left: t * pxPerSec }}>
+              <div style={{ width: 1, height: 6, background: C.border }} />
+              <span style={{ fontFamily: F.mono, fontSize: 9, color: C.paperFaint, marginTop: 1 }}>{Math.floor(t / 60)}:{String(Math.round(t % 60)).padStart(2, "0")}</span>
+            </div>
+          ))}
+        </div>
+
+        {/* Track VIDEO */}
+        <div>
+          <span style={{ fontFamily: F.mono, fontSize: 10, color: C.paperFaint, letterSpacing: "0.08em" }}>VIDEO</span>
+          <div className="relative rounded" style={{ height: 64, width: timelineW, background: C.panelRaised, border: `1px solid ${C.borderSoft}`, borderRadius: 4 }}>
+            {segments.map((s, i) => {
+              const dur = Math.max(s.duration - s.start_trim - s.end_trim, 0.5);
+              const cands = footageData?.[String(s.index)]?.candidates || [];
+              const curCandIdx = cands.findIndex(c => c.video_path === s.video_path);
+              const thumb = cands[curCandIdx >= 0 ? curCandIdx : (picks?.[s.index] ?? 0)]?.thumbnail_url;
+              return (
+                <div
+                  key={`${s.index}-${i}`}
+                  draggable={!job}
+                  onDragStart={() => setDragIdx(i)}
+                  onDragOver={e => e.preventDefault()}
+                  onDrop={() => reorderTo(i)}
+                  onDragEnd={() => setDragIdx(null)}
+                  className="absolute rounded flex items-center"
+                  style={{
+                    left: segStarts[i] * pxPerSec,
+                    width: Math.max(dur * pxPerSec, 56),
+                    top: 4, height: 56,
+                    background: dragIdx === i ? C.amber + "22" : `${colors[i % colors.length]}26`,
+                    border: `1px solid ${dragIdx === i ? C.amber : colors[i % colors.length]}66`,
+                    cursor: "grab", overflow: "hidden",
+                    boxShadow: dragIdx === i ? `0 0 12px ${C.amber}44` : "none",
+                  }}
+                >
+                  {/* Trim handle kiri */}
+                  <div onMouseDown={e => startTrimDrag(i, "start", e)} title="Trim start"
+                    style={{ width: 7, height: "100%", cursor: "ew-resize", background: C.paper + "22", flexShrink: 0, borderRight: `1px solid ${C.border}` }} />
+                  <div className="flex-1 flex items-center gap-2 px-1.5" style={{ minWidth: 0 }}>
+                    {thumb ? <img src={thumb} style={{ width: 44, height: 34, objectFit: "cover", borderRadius: 3, flexShrink: 0 }} /> : <Film size={16} color={C.paperDim} style={{ flexShrink: 0 }} />}
+                    <div className="flex flex-col" style={{ minWidth: 0 }}>
+                      <span style={{ fontFamily: F.mono, fontSize: 9.5, color: C.paper, whiteSpace: "nowrap" }}>Seg {i + 1} · {fmt(dur)}</span>
+                      {/* 3.3 swap footage dropdown */}
+                      {cands.length > 1 ? (
+                        <select value={curCandIdx >= 0 ? curCandIdx : 0} onChange={e => swapFootage(i, parseInt(e.target.value))}
+                          style={{ fontFamily: F.mono, fontSize: 8.5, color: C.paperDim, background: "transparent", border: "none", outline: "none", maxWidth: 120, cursor: "pointer" }}>
+                          {cands.map((c, ci) => <option key={ci} value={ci}>{ci + 1}. {String(c.video_path || "").split(/[\\/]/).pop().slice(0, 18)}</option>)}
+                        </select>
+                      ) : (
+                        <span style={{ fontFamily: F.mono, fontSize: 8.5, color: C.paperFaint, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 110 }}>{String(s.video_path || "no footage").split(/[\\/]/).pop().slice(0, 22)}</span>
+                      )}
+                    </div>
+                  </div>
+                  {/* Razor split (3.2) */}
+                  <IconButton onClick={() => splitSegment(i)} icon={Scissors} title="Split segmen" color={C.amber} />
+                  {/* Trim handle kanan */}
+                  <div onMouseDown={e => startTrimDrag(i, "end", e)} title="Trim end"
+                    style={{ width: 7, height: "100%", cursor: "ew-resize", background: C.paper + "22", flexShrink: 0, borderLeft: `1px solid ${C.border}` }} />
+                </div>
+              );
+            })}
+            {segments.length === 0 && <span style={{ fontFamily: F.body, fontSize: 11, color: C.paperFaint, position: "absolute", top: 24, left: 12 }}>Belum ada segmen — generate script dulu.</span>}
+          </div>
+        </div>
+
+        {/* Track MUSIK (3.3 swap musik) */}
+        <div>
+          <span style={{ fontFamily: F.mono, fontSize: 10, color: C.paperFaint, letterSpacing: "0.08em" }}>MUSIK</span>
+          <div className="flex items-center gap-3 rounded" style={{ height: 40, width: timelineW, background: C.panelRaised, border: `1px solid ${C.borderSoft}`, borderRadius: 4, padding: "0 10px" }}>
+            <Music2 size={14} color={finishing.add_music ? C.music : C.paperFaint} />
+            <span style={{ fontFamily: F.mono, fontSize: 10.5, color: finishing.add_music ? C.paper : C.paperFaint }}>{musicLabel}</span>
+            <div className="flex-1 relative" style={{ height: 26 }}>
+              {finishing.add_music && <div style={{ position: "absolute", left: 0, right: 0, top: 8, height: 10, background: `linear-gradient(90deg, ${C.music}33, ${C.music}88)`, borderRadius: 3 }} />}
+            </div>
+            <label className="flex items-center gap-1.5" style={{ cursor: "pointer" }}>
+              <input type="checkbox" checked={finishing.add_music} onChange={e => { pushHistory(); setFinishing({ ...finishing, add_music: e.target.checked }); }} style={{ accentColor: C.tally }} />
+              <span style={{ fontFamily: F.mono, fontSize: 9.5, color: C.paperDim }}>On</span>
+            </label>
+            <select value={finishing.music_mood} onChange={e => { pushHistory(); setFinishing({ ...finishing, add_music: true, music_mood: e.target.value }); }}
+              style={{ fontFamily: F.mono, fontSize: 10.5, color: C.paper, background: C.panelRaised, border: `1px solid ${C.border}`, borderRadius: 3, padding: "3px 6px", outline: "none", cursor: "pointer" }}>
+              {["calm", "tense", "sad", "epic", "upbeat"].map(m => <option key={m} value={m}>{m}</option>)}
+            </select>
+          </div>
+        </div>
+
+        {/* Track CAPTION */}
+        <div>
+          <span style={{ fontFamily: F.mono, fontSize: 10, color: C.paperFaint, letterSpacing: "0.08em" }}>CAPTION</span>
+          <div className="relative rounded" style={{ height: 30, width: timelineW, background: C.panelRaised, border: `1px solid ${C.borderSoft}`, borderRadius: 4 }}>
+            {segments.map((s, i) => {
+              const dur = Math.max(s.duration - s.start_trim - s.end_trim, 0.5);
+              return (
+                <div key={`cap-${s.index}-${i}`} className="absolute rounded flex items-center px-1.5"
+                  style={{ left: segStarts[i] * pxPerSec, width: Math.max(dur * pxPerSec - 3, 30), top: 5, height: 20, background: `${C.caption}26`, border: `1px solid ${C.caption}55`, overflow: "hidden" }}>
+                  <span style={{ fontFamily: F.mono, fontSize: 8.5, color: C.caption, whiteSpace: "nowrap" }}>{(s.narration_text || `Seg ${i + 1}`).slice(0, Math.max(2, Math.floor((dur * pxPerSec) / 8)))}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* ===== Detail panel per segmen (list) ===== */}
       <div className="flex flex-col gap-2">
-        <span style={{ fontFamily: F.mono, fontSize: 10, color: C.paperFaint, letterSpacing: "0.08em", marginBottom: 4 }}>CLIPS</span>
+        <span style={{ fontFamily: F.mono, fontSize: 10, color: C.paperFaint, letterSpacing: "0.08em", marginBottom: 4 }}>DETAIL SEGMEN</span>
         {segments.map((s, i) => (
-          <div key={i} className="flex items-center gap-3 px-4 py-3 rounded" style={{ background: C.panel, border: `1px solid ${C.borderSoft}` }}>
+          <div key={`d-${s.index}-${i}`} className="flex items-center gap-3 px-4 py-3 rounded" style={{ background: C.panel, border: `1px solid ${C.borderSoft}` }}>
             <div className="flex items-center justify-center rounded-full" style={{ width: 26, height: 26, background: C.panelRaised, border: `1px solid ${C.border}`, flexShrink: 0 }}>
               <span style={{ fontFamily: F.mono, fontSize: 11, color: C.cyan, fontWeight: 600 }}>{i + 1}</span>
             </div>
+            <GripVertical size={14} color={C.paperFaint} style={{ flexShrink: 0, cursor: "grab" }} />
             <div style={{ width: 50, height: 30, background: C.panelRaised, borderRadius: 3, flexShrink: 0, overflow: "hidden" }}>
               {(() => { const cand = footageData?.[String(s.index)]?.candidates?.[picks?.[s.index] ?? 0]; const thumb = cand?.thumbnail_url; return thumb ? <img src={thumb} style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <Film size={16} color={C.paperFaint} style={{ margin: "7px auto", display: "block" }} />; })()}
             </div>
             <div className="flex-1 flex flex-col" style={{ minWidth: 0 }}>
-              <span style={{ fontFamily: F.mono, fontSize: 11, color: C.paper, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>Seg {i + 1}: {s.narration_text.slice(0, 60)}</span>
-              <span style={{ fontFamily: F.mono, fontSize: 9.5, color: C.paperFaint }}>{s.keywords?.join(", ")}</span>
+              <span style={{ fontFamily: F.mono, fontSize: 9.5, color: C.paperFaint, marginBottom: 3 }}>Teks narasi (edit, lalu Sinkronkan Subtitle)</span>
+              <textarea
+                value={s.narration_text}
+                onChange={e => updateSegment(i, { narration_text: e.target.value })}
+                rows={2}
+                style={{ width: "100%", fontFamily: F.body, fontSize: 11.5, color: C.paper, background: C.panelRaised, border: `1px solid ${C.borderSoft}`, borderRadius: 3, padding: "4px 6px", outline: "none", resize: "vertical", lineHeight: 1.45 }}
+              />
+              <span style={{ fontFamily: F.mono, fontSize: 9.5, color: C.paperFaint, marginTop: 3 }}>{s.keywords?.join(", ")}</span>
             </div>
             <div className="flex items-center gap-2 flex-shrink-0">
               <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
@@ -195,15 +480,19 @@ function TimelineEditor({ narration, footageData, picks }) {
             </div>
             <span style={{ fontFamily: F.mono, fontSize: 11, color: C.paperFaint, width: 40, textAlign: "right", flexShrink: 0 }}>{fmt(Math.max(s.duration - s.start_trim - s.end_trim, 0.5))}</span>
             <div className="flex items-center gap-1 flex-shrink-0">
-              <button onClick={() => moveSegment(i, -1)} disabled={i === 0} style={{ background: "none", border: "none", cursor: i === 0 ? "default" : "pointer", opacity: i === 0 ? 0.3 : 1, padding: 2 }}><ArrowUp size={13} color={C.paperDim} /></button>
-              <button onClick={() => moveSegment(i, 1)} disabled={i === segments.length - 1} style={{ background: "none", border: "none", cursor: i === segments.length - 1 ? "default" : "pointer", opacity: i === segments.length - 1 ? 0.3 : 1, padding: 2 }}><ArrowDown size={13} color={C.paperDim} /></button>
-              {segments.length > 1 && <button onClick={() => removeSegment(i)} style={{ background: "none", border: "none", cursor: "pointer", padding: 2 }}><Trash2 size={13} color={C.red} /></button>}
+              <IconButton onClick={() => splitSegment(i)} icon={Scissors} title="Split" color={C.amber} />
+              <IconButton onClick={() => moveSegment(i, -1)} icon={ArrowUp} disabled={i === 0} title="Naik" />
+              <IconButton onClick={() => moveSegment(i, 1)} icon={ArrowDown} disabled={i === segments.length - 1} title="Turun" />
+              {segments.length > 1 && <IconButton onClick={() => removeSegment(i)} icon={Trash2} title="Hapus" color={C.red} />}
             </div>
           </div>
         ))}
       </div>
+
       {error && <div className="flex items-center gap-2 px-4 py-3 rounded" style={{ background: "#2A1712", border: `1px solid ${C.tallyDim}` }}><AlertTriangle size={14} color={C.tally} /><span style={{ fontFamily: F.mono, fontSize: 11, color: C.paperDim }}>{error}</span></div>}
       {job && <div className="flex items-center gap-3 px-4 py-3 rounded" style={{ background: C.panel, border: `1px solid ${C.borderSoft}` }}><Loader2 size={14} color={C.amber} className="animate-spin" /><span style={{ fontFamily: F.body, fontSize: 12, color: C.paperDim }}>{job.message}</span></div>}
+
+      {/* ===== Finishing options (dipertahankan) ===== */}
       <div className="flex flex-col gap-3 px-4 py-3.5 rounded" style={{ background: C.panel, border: `1px solid ${C.borderSoft}` }}>
         <span style={{ fontFamily: F.mono, fontSize: 10, color: C.amber, letterSpacing: "0.08em" }}>FINISHING OPTIONS</span>
         <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
@@ -240,6 +529,7 @@ function TimelineEditor({ narration, footageData, picks }) {
           </label>
         </div>
       </div>
+
       <div className="flex items-center gap-3 flex-wrap">
         <PrimaryButton onClick={() => exportTimeline(true)} disabled={job !== null} icon={Play}>Preview</PrimaryButton>
         <PrimaryButton onClick={() => exportTimeline(false)} disabled={job !== null} icon={Clapperboard}>Render Video</PrimaryButton>
@@ -248,7 +538,11 @@ function TimelineEditor({ narration, footageData, picks }) {
       {(previewUrl || result) && <div style={{ borderRadius: 8, overflow: "hidden", background: "#000" }}><video ref={videoRef} src={previewUrl || result} controls style={{ width: "100%", maxHeight: 400, display: "block" }} onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} /></div>}
       <div className="flex items-start gap-2 px-3.5 py-2.5 rounded" style={{ background: C.panel, border: `1px solid ${C.borderSoft}` }}>
         <Info size={14} color={C.amber} style={{ marginTop: 1, flexShrink: 0 }} />
-        <span style={{ fontFamily: F.body, fontSize: 11.5, color: C.paperDim, lineHeight: 1.5 }}>Trim in/out dalam detik. Setiap segmen bisa diatur ulang (urutan) atau dihapus. Klik Preview untuk render cepat resolusi kecil, Render untuk full HD.</span>
+        <span style={{ fontFamily: F.body, fontSize: 11.5, color: C.paperDim, lineHeight: 1.5 }}>
+          Drag clip di track Video untuk mengubah urutan · tarik handle kiri/kanan untuk trim · ✂️ untuk split ·
+          dropdown di clip untuk ganti footage · track Musik untuk ganti mood · undo/redo tersedia ·
+          Auto-preview merender preview kecil otomatis 1.5s setelah edit.
+        </span>
       </div>
     </div>
   );
