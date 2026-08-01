@@ -51,16 +51,46 @@ def _smtpe_tc(seconds: float) -> str:
     return f"{h:02d}:{m:02d}:{s:02d}:{f:02d}"
 
 
+def _resolve_finishing(finishing: dict | None) -> dict:
+    """Normalize the optional finishing dict (Fase 1C.2)."""
+    f = finishing or {}
+    return {
+        "music_path": str(f.get("music_path") or ""),
+        "music_mood": f.get("music_mood"),
+        "caption_style": f.get("caption_style") or "minimal-white-center",
+        "transition_style": f.get("transition_style") or "hard_cut",
+        "ken_burns": bool(f.get("ken_burns")),
+    }
+
+
+def _finishing_notes(finishing: dict | None) -> list[str]:
+    """Human-readable finishing summary lines (used in guides/README)."""
+    f = _resolve_finishing(finishing)
+    notes = []
+    music_name = Path(f["music_path"]).name if f["music_path"] else None
+    if music_name:
+        mood = f" (mood: {f['music_mood']})" if f["music_mood"] else ""
+        notes.append(f"Musik latar: {music_name}{mood}")
+    else:
+        notes.append("Musik latar: tidak ada")
+    notes.append(f"Caption style: {f['caption_style']}")
+    notes.append(f"Transisi: {f['transition_style']}")
+    notes.append(f"Ken Burns: {'ya' if f['ken_burns'] else 'tidak'}")
+    return notes
+
+
 # ---------------------------------------------------------------------------
 # EDL (CMX 3600) — most universal format
 # ---------------------------------------------------------------------------
 def generate_edl(timed_segments: list[dict], footage_map: dict, narration_audio: str,
-                  output_name: str = "ritme_project") -> str:
+                  output_name: str = "ritme_project", finishing: dict | None = None) -> str:
     """
     Generate an EDL file compatible with Premiere, DaVinci Resolve, Avid.
     Each narration segment maps to one video clip on the V1 track.
-    The narration audio sits on A1/A2 (stereo).
+    The narration audio sits on A1/A2 (stereo); background music (when given)
+    is added as an extra A-track event (Fase 1C.2).
     """
+    f = _resolve_finishing(finishing)
     lines = [
         f"TITLE: {output_name}",
         "FCM: NON-DROP FRAME",
@@ -105,6 +135,18 @@ def generate_edl(timed_segments: list[dict], footage_map: dict, narration_audio:
         lines.append(f"* COMMENT: Narration audio track")
         lines.append("")
 
+    # Add background music track (Fase 1C.2)
+    if f["music_path"] and os.path.exists(f["music_path"]):
+        total_dur = record_cursor
+        lines.append(f"100  MUS     A     C        {_smtpe_tc(0)} {_smtpe_tc(total_dur)} {_smtpe_tc(0)} {_smtpe_tc(total_dur)}")
+        lines.append(f"* FROM CLIP NAME: {Path(f['music_path']).name}")
+        mood = f" (mood: {f['music_mood']})" if f["music_mood"] else ""
+        lines.append(f"* COMMENT: Background music{mood}")
+
+    # Finishing notes as EDL comments (Fase 1C.2)
+    for note in _finishing_notes(finishing):
+        lines.append(f"* NOTE: {note}")
+
     return "\n".join(lines)
 
 
@@ -112,8 +154,9 @@ def generate_edl(timed_segments: list[dict], footage_map: dict, narration_audio:
 # FCPXML — Final Cut Pro / Premiere / DaVinci
 # ---------------------------------------------------------------------------
 def generate_fcpxml(timed_segments: list[dict], footage_map: dict, narration_audio: str,
-                     output_name: str = "ritme_project") -> str:
+                     output_name: str = "ritme_project", finishing: dict | None = None) -> str:
     """Generate FCPXML 1.8 compatible with FCP, Premiere Pro, DaVinci Resolve."""
+    f = _resolve_finishing(finishing)
 
     total_duration = sum(s.get("duration", 3.0) for s in timed_segments)
     total_frames = int(total_duration * 30)  # 30fps
@@ -161,6 +204,24 @@ def generate_fcpxml(timed_segments: list[dict], footage_map: dict, narration_aud
                     </media>
                 </clip>"""
 
+    # Add background music as a second audio clip (Fase 1C.2)
+    if f["music_path"] and os.path.exists(f["music_path"]):
+        music_frames = int(total_duration * 30)
+        audio_xml += f"""
+                <clip name="{Path(f['music_path']).stem}" offset="0" duration="{music_frames}/30s">
+                    <media>
+                        <audio>
+                            <format audio-format="r3" mediaRepLocation="local">
+                                <audio-format id="r3" channelCount="2" sampleRate="48000"/>
+                            </format>
+                            <source start="0/48000s" duration="{music_frames}/30s"/>
+                        </audio>
+                    </media>
+                </clip>"""
+
+    # Finishing metadata as XML comments (Fase 1C.2)
+    notes_xml = "".join(f"<!-- {note} -->\n" for note in _finishing_notes(finishing))
+
     fcpxml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE fcpxml>
 <fcpxml version="1.8">
@@ -168,13 +229,14 @@ def generate_fcpxml(timed_segments: list[dict], footage_map: dict, narration_aud
         <format id="r1" name="FFVideoFormatRateProject" frameDuration="1001/30000s"/>
         <format id="r3" name="FFVideoFormat1080p30" frameDuration="1001/30000s" width="1920" height="1080"/>
     </resources>
-    <library>
+{notes_xml}    <library>
         <event name="{output_name}">
             <project name="{output_name}">
                 <sequence format="r1" duration="{total_frames}/30s" tcStart="0/30s">
                     <spine>
                         <gap name="Gap" offset="0" duration="{total_frames}/30s">
 {clips_xml}
+{audio_xml}
                         </gap>
                     </spine>
                 </sequence>
@@ -190,8 +252,9 @@ def generate_fcpxml(timed_segments: list[dict], footage_map: dict, narration_aud
 # Premiere XML (FCP7 format) — Adobe Premiere Pro
 # ---------------------------------------------------------------------------
 def generate_premiere_xml(timed_segments: list[dict], footage_map: dict, narration_audio: str,
-                           output_name: str = "ritme_project") -> str:
+                           output_name: str = "ritme_project", finishing: dict | None = None) -> str:
     """Generate FCP7 XML for Adobe Premiere Pro import (File > Import)."""
+    f = _resolve_finishing(finishing)
 
     clips_xml = ""
     clip_id = 0
@@ -237,6 +300,31 @@ def generate_premiere_xml(timed_segments: list[dict], footage_map: dict, narrati
 
     total_frames = int(total_duration * 25)
 
+    # Second audio track for background music (Fase 1C.2)
+    music_track = ""
+    if f["music_path"] and os.path.exists(f["music_path"]):
+        music_track = f"""
+        <track>
+          <clipitem id="clipitem-music">
+            <name>{Path(f['music_path']).stem}</name>
+            <duration>{total_frames}/25s</duration>
+            <rate><timebase>25</timebase></rate>
+            <start>0/25s</start>
+            <end>{total_frames}/25s</end>
+            <in>0/25s</in>
+            <out>{total_frames}/25s</out>
+            <file id="file-music">
+              <name>{Path(f['music_path']).stem}</name>
+              <pathurl>file:///{Path(f['music_path']).as_posix()}</pathurl>
+              <rate><timebase>25</timebase></rate>
+              <duration>{total_frames}/25s</duration>
+            </file>
+          </clipitem>
+        </track>"""
+
+    # Finishing metadata as XML comments (Fase 1C.2)
+    notes_xml = "".join(f"      <!-- {note} -->\n" for note in _finishing_notes(finishing))
+
     xml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE xmeml>
 <xmeml version="5">
@@ -271,9 +359,9 @@ def generate_premiere_xml(timed_segments: list[dict], footage_map: dict, narrati
             </file>
           </clipitem>
         </track>
-      </audio>
+{music_track}      </audio>
     </media>
-  </sequence>
+{notes_xml}  </sequence>
 </xmeml>"""
 
     return xml
@@ -283,7 +371,8 @@ def generate_premiere_xml(timed_segments: list[dict], footage_map: dict, narrati
 # CapCut Guide + Renamed Footage
 # ---------------------------------------------------------------------------
 def generate_capcut_guide(timed_segments: list[dict], footage_map: dict,
-                           narration_audio: str, output_name: str = "ritme_project") -> str:
+                           narration_audio: str, output_name: str = "ritme_project",
+                           finishing: dict | None = None) -> str:
     """
     Generate an HTML timeline guide for CapCut Desktop.
     
@@ -342,7 +431,26 @@ def generate_capcut_guide(timed_segments: list[dict], footage_map: dict,
 </div>
 
 <h2>Timeline ({len(timed_segments)} segments, {sum(s.get('duration',3) for s in timed_segments):.1f}s)</h2>
-"""]
+"""
+    ]
+
+    # Finishing section (Fase 1C.2) — tells the user exactly what to re-apply
+    # manually in CapCut (music track + caption style + transitions).
+    f = _resolve_finishing(finishing)
+    music_name = Path(f["music_path"]).name if f["music_path"] else "tidak ada"
+    mood_txt = f" (mood: {f['music_mood']})" if f["music_mood"] else ""
+    html_parts.append(f"""
+<div class="finishing" style="background:#1e2833;border:1px solid #2a3a4a;border-radius:6px;padding:16px;margin-bottom:24px">
+  <h2 style="color:#e8a33d;font-size:15px;margin-bottom:8px">Elemen Finishing (Fase 1)</h2>
+  <ul style="color:#c4b9a8;font-size:12px;line-height:1.7">
+    <li><strong>Musik latar:</strong> {music_name}{mood_txt} — drag file musik dari folder export ke audio track (di bawah narasi), atur volume agar tidak menenggelamkan narasi (~35%).</li>
+    <li><strong>Caption style:</strong> {f["caption_style"]} — tambahkan teks per segmen sesuai gaya ini:
+      <em>{"bold putih bawah" if f["caption_style"] == "bold-white-bottom" else ("putih tipis tengah" if f["caption_style"] == "minimal-white-center" else "lower-third dengan bar semi-transparan")}</em>.</li>
+    <li><strong>Transisi:</strong> {f["transition_style"]}{" — tambahkan crossfade 0.5s antar klip" if f["transition_style"] == "crossfade" else " — potongan langsung (tanpa transisi)"}.</li>
+    <li><strong>Ken Burns:</strong> {"ya — tambahkan zoom pelan (1.0 → 1.06) pada klip ≥2 detik" if f["ken_burns"] else "tidak"}.</li>
+  </ul>
+</div>
+""")
 
     time_cursor = 0.0
     for idx, seg in enumerate(timed_segments):
@@ -428,11 +536,16 @@ def capcut_prepare_footage(timed_segments: list[dict], footage_map: dict,
 # ---------------------------------------------------------------------------
 def export_project(timed_segments: list[dict], footage_map: dict,
                     narration_audio: str, output_name: str = "ritme_project",
-                    formats: list[str] = None) -> str:
+                    formats: list[str] = None,
+                    finishing: dict | None = None) -> str:
     """
     Export project in multiple formats. Returns path to the zip file.
 
     Supported formats: edl, fcpxml, premiere_xml, capcut_json
+    finishing: optional dict {music_path, music_mood, caption_style,
+               transition_style, ken_burns} — embedded into the exported
+               files so editors know what Fase-1 elements to re-apply
+               (Fase 1C.2).
     """
     if formats is None:
         formats = ["edl", "fcpxml", "premiere_xml", "capcut_json"]
@@ -443,19 +556,19 @@ def export_project(timed_segments: list[dict], footage_map: dict,
 
     # Generate project files
     if "edl" in formats:
-        edl_content = generate_edl(timed_segments, footage_map, narration_audio, output_name)
+        edl_content = generate_edl(timed_segments, footage_map, narration_audio, output_name, finishing)
         (export_dir / f"{output_name}.edl").write_text(edl_content, encoding="utf-8")
 
     if "fcpxml" in formats:
-        fcpxml_content = generate_fcpxml(timed_segments, footage_map, narration_audio, output_name)
+        fcpxml_content = generate_fcpxml(timed_segments, footage_map, narration_audio, output_name, finishing)
         (export_dir / f"{output_name}.fcpxml").write_text(fcpxml_content, encoding="utf-8")
 
     if "premiere_xml" in formats:
-        premiere_content = generate_premiere_xml(timed_segments, footage_map, narration_audio, output_name)
+        premiere_content = generate_premiere_xml(timed_segments, footage_map, narration_audio, output_name, finishing)
         (export_dir / f"{output_name}_premiere.xml").write_text(premiere_content, encoding="utf-8")
 
     if "capcut_json" in formats:
-        capcut_content = generate_capcut_guide(timed_segments, footage_map, narration_audio, output_name)
+        capcut_content = generate_capcut_guide(timed_segments, footage_map, narration_audio, output_name, finishing)
         (export_dir / f"{output_name}_timeline.html").write_text(capcut_content, encoding="utf-8")
 
     # Copy narration audio
@@ -463,6 +576,12 @@ def export_project(timed_segments: list[dict], footage_map: dict,
         import shutil
         audio_dest = export_dir / Path(narration_audio).name
         shutil.copy2(narration_audio, audio_dest)
+
+    # Copy background music into the export (Fase 1C.2)
+    f = _resolve_finishing(finishing)
+    if f["music_path"] and os.path.exists(f["music_path"]):
+        import shutil
+        shutil.copy2(f["music_path"], export_dir / Path(f["music_path"]).name)
 
     # Copy footage clips with numbered names for CapCut
     footage_dir = export_dir / "footage"
@@ -482,6 +601,7 @@ def export_project(timed_segments: list[dict], footage_map: dict,
     capcut_rename = capcut_prepare_footage(timed_segments, footage_map, capcut_dir)
 
     # Write README
+    finishing_notes = "\n".join(f"- {n}" for n in _finishing_notes(finishing))
     readme = f"""# RITME Project Export: {output_name}
 
 ## Format yang tersedia:
@@ -511,12 +631,18 @@ def export_project(timed_segments: list[dict], footage_map: dict,
 - /footage/ = Klip video original dari pipeline
 - /capcut_footage/ = Klip video di-rename berurutan (01_intro.mp4, 02_keyword.mp4, dst)
 - /narration audio = File audio narasi
+- /music file = File musik latar (kalau ada)
+
+## Elemen Finishing (Fase 1) — harus di-replicate manual di editor:
+{finishing_notes}
 
 ## Tips:
 - CapCut Desktop tidak support import JSON. Gunakan EDL (Method 1) atau manual drag-drop
 - File EDL dibuka via File > Import Project di CapCut Desktop v3.0+
 - File di /capcut_footage/ sudah di-rename berurutan untuk drag-drop mudah
 - Jika file tidak ditemukan di editor, pastikan path absolut masih valid
+- Musik latar: drag ke audio track di bawah narasi, atur volume ~35% (auto-ducking di RITME sudah hilang karena export ke editor eksternal)
+- Jika musik dipakai di video yang dimonetisasi, beri atribusi (lihat music/LICENSES.md di repo RITME)
 """
     (export_dir / "README.md").write_text(readme, encoding="utf-8")
 

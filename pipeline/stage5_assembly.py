@@ -114,27 +114,47 @@ def _apply_kenburns(clip, seed: int, target_w: int, target_h: int):
 
 def _build_segment_clip(footage_path: str, sub_duration: float, target_w: int, target_h: int,
                          offset_seed: float = 0.0, extend_secs: float = 0.0,
-                         allow_kenburns: bool = True):
+                         allow_kenburns: bool = True, kenburns_on: bool = True,
+                         trim_start: float = 0.0, trim_end: float = 0.0,
+                         sub_index: int = 0):
     """
     Load footage, take a `sub_duration`-long window from it (optionally
     extended by `extend_secs` — used to compensate crossfade overlaps at the
     very end of the timeline), fit to frame, and (if enabled) apply a subtle
     Ken Burns zoom.
+
+    trim_start/trim_end (seconds): timeline-editor trims on the source clip.
+    When either is non-zero the window is taken from inside
+    [trim_start, source.duration - trim_end] instead of the free offset_seed
+    pick, and sub-cuts walk forward from trim_start (`sub_index * sub_duration`).
     """
     source = VideoFileClip(footage_path)
     need = sub_duration + extend_secs
 
-    if source.duration >= need:
+    if trim_start > 0 or trim_end > 0:
+        avail_start = trim_start
+        avail_end = max(trim_start + 0.2, source.duration - trim_end)
+        avail = avail_end - avail_start
+        start = avail_start + (sub_index * sub_duration)
+        if start + need > avail_end:
+            start = max(avail_start, avail_end - need)
+        if avail >= need:
+            clip = source.subclipped(start, start + need)
+        else:
+            piece = source.subclipped(avail_start, avail_end)
+            loops = int(need / max(piece.duration, 0.05)) + 1
+            clip = concatenate_videoclips([piece] * loops).subclipped(0, need)
+    elif source.duration >= need:
         max_start = max(0, source.duration - need)
         start = min(offset_seed % (max_start + 0.01), max_start)
         clip = source.subclipped(start, start + need)
     else:
-        loops = int(need / source.duration) + 1
+        loops = int(need / max(source.duration, 0.05)) + 1
         clip = concatenate_videoclips([source] * loops).subclipped(0, need)
 
     clip = _fit_clip_to_frame(clip, target_w, target_h).without_audio()
 
-    if allow_kenburns and KEN_BURNS_ENABLED and sub_duration >= KEN_BURNS_MIN_DURATION:
+    if allow_kenburns and kenburns_on and sub_duration >= KEN_BURNS_MIN_DURATION:
         clip = _apply_kenburns(clip, offset_seed, target_w, target_h)
 
     return clip
@@ -190,7 +210,14 @@ def _caption_clips_for_segment(seg: dict, style: dict, frame_w: int, frame_h: in
 def assemble_video(timed_segments: list[dict], footage_map: dict[int, dict],
                     narration_audio_path: str, template: dict,
                     output_name: str = "final_output", on_progress=None,
-                    music_path: str | None = None) -> str:
+                    music_path: str | None = None,
+                    add_music: bool | None = None,
+                    music_mood: str | None = None,
+                    caption_style: str | dict | None = None,
+                    transition_style: str | None = None,
+                    ken_burns: bool | None = None,
+                    resolution: tuple[int, int] | None = None,
+                    ffmpeg_preset: str = "medium") -> str:
     """
     timed_segments: output of Stage 3 (align_keywords_to_timestamps)
     footage_map: {segment_index: {"video_path": ..., ...}} from Stage 4
@@ -200,10 +227,42 @@ def assemble_video(timed_segments: list[dict], footage_map: dict[int, dict],
                 from the music/ folder based on the script's mood.
     on_progress(percent, message): optional callback for real encode progress
     (fed from moviepy's own frame-by-frame writer, not a simulated bar).
+
+    Finishing options (Fase 1C.1 — the timeline editor's manual choices).
+    Each flag independently controls its feature; None means "follow the
+    global config flag" so the /api/render quick mode keeps its old behaviour:
+      add_music:       True/False force music on/off; None -> MUSIC_ENABLED
+      music_mood:      explicit mood (e.g. "calm") -> pick file whose name
+                       contains it; None -> auto-pick from script content
+      caption_style:   preset name (CAPTION_PRESETS) or inline dict; None ->
+                       resolve from the template (old behaviour)
+      transition_style:"crossfade" forces transitions on, "hard_cut" forces
+                       them off; None -> TRANSITION_ENABLED config
+      ken_burns:       True/False force Ken Burns on/off; None -> KEN_BURNS_ENABLED
+      resolution:      (w, h) override for preview renders (small = fast);
+                       None -> OUTPUT_RESOLUTION from config
+      ffmpeg_preset:   x264 preset ("medium" full render, "ultrafast" preview)
     """
-    target_w, target_h = OUTPUT_RESOLUTION
+    target_w, target_h = resolution or OUTPUT_RESOLUTION
     avg_shot_duration = template["pacing"]["avg_shot_duration"]
-    caption_style = resolve_caption_style(template)
+
+    transitions_on = (transition_style == "crossfade") if transition_style is not None else TRANSITION_ENABLED
+    kenburns_on = ken_burns if ken_burns is not None else KEN_BURNS_ENABLED
+    music_on = add_music if add_music is not None else MUSIC_ENABLED
+
+    if caption_style is not None and isinstance(caption_style, str):
+        from pipeline.caption_renderer import CAPTION_PRESETS
+        if caption_style in CAPTION_PRESETS:
+            caption_style_dict = resolve_caption_style({**template, "caption_style": caption_style})
+        else:
+            print(f"[stage5] Unknown caption_style preset '{caption_style}' — using template style.")
+            caption_style_dict = resolve_caption_style(template)
+    elif isinstance(caption_style, dict):
+        merged = dict(resolve_caption_style(template))
+        merged.update(caption_style)
+        caption_style_dict = merged
+    else:
+        caption_style_dict = resolve_caption_style(template)
 
     if on_progress:
         on_progress(2, "Menyusun klip per segmen…")
@@ -215,6 +274,8 @@ def assemble_video(timed_segments: list[dict], footage_map: dict[int, dict],
     for idx, seg in enumerate(timed_segments):
         footage = footage_map.get(idx)
         seg_dur = seg["duration"]
+        trim_start = float(seg.get("trim_start", 0.0) or 0.0)
+        trim_end = float(seg.get("trim_end", 0.0) or 0.0)
 
         if not footage or not Path(footage["video_path"]).exists():
             print(f"[stage5] No footage for segment {idx} — inserting black frame with subtitle only.")
@@ -233,13 +294,16 @@ def assemble_video(timed_segments: list[dict], footage_map: dict[int, dict],
                 "offset_seed": idx * 7.0 + i * 3.0,
                 "is_last": False,
                 "is_filler": False,
+                "trim_start": trim_start,
+                "trim_end": trim_end,
+                "sub_index": i,
             })
             cursor += sub_dur
 
     # Decide crossfades: only boundaries where the FOLLOWING shot is long
     # enough — short punchy cuts stay hard cuts.
     n = len(layers)
-    if TRANSITION_ENABLED and n > 1:
+    if transitions_on and n > 1:
         for i in range(1, n):
             if layers[i]["dur"] >= TRANSITION_MIN_SHOT:
                 fade = min(TRANSITION_DURATION, 0.9 * min(layers[i - 1]["dur"], layers[i]["dur"]))
@@ -261,6 +325,9 @@ def assemble_video(timed_segments: list[dict], footage_map: dict[int, dict],
         clip = _build_segment_clip(
             L["footage_path"], L["dur"], target_w, target_h,
             offset_seed=L["offset_seed"], extend_secs=ext,
+            kenburns_on=kenburns_on,
+            trim_start=L.get("trim_start", 0.0), trim_end=L.get("trim_end", 0.0),
+            sub_index=L.get("sub_index", 0),
         )
         fade = L["fade_in"]
         if fade > 0:
@@ -286,7 +353,7 @@ def assemble_video(timed_segments: list[dict], footage_map: dict[int, dict],
     # ---- Captions (Fase 1.1 + 1.5) ----------------------------------------
     caption_layers = []
     for idx, seg in enumerate(timed_segments):
-        caption_layers.extend(_caption_clips_for_segment(seg, caption_style, target_w, target_h))
+        caption_layers.extend(_caption_clips_for_segment(seg, caption_style_dict, target_w, target_h))
 
     if on_progress:
         on_progress(15, "Menggabungkan timeline…")
@@ -297,11 +364,16 @@ def assemble_video(timed_segments: list[dict], footage_map: dict[int, dict],
     full_video = full_video.with_audio(trimmed_audio)
 
     # ---- Background music + auto-ducking (Fase 1.2) -----------------------
-    if MUSIC_ENABLED:
+    if music_on:
         try:
             from pipeline import stage_music
 
-            chosen = Path(music_path) if music_path else stage_music.pick_music_file(timed_segments)
+            chosen = Path(music_path) if music_path else None
+            if chosen is None:
+                if music_mood:
+                    chosen = stage_music.pick_music_by_mood(music_mood)
+                else:
+                    chosen = stage_music.pick_music_file(timed_segments)
             if chosen and chosen.exists():
                 windows = [(float(s.get("start", 0.0)), float(s.get("end", 0.0))) for s in timed_segments]
                 ducked = stage_music.build_ducked_music(
@@ -316,6 +388,8 @@ def assemble_video(timed_segments: list[dict], footage_map: dict[int, dict],
             else:
                 if music_path:
                     print(f"[stage5] Music file not found: {music_path} — continuing without music.")
+                elif music_mood:
+                    print(f"[stage5] No music file for mood '{music_mood}' — continuing narration-only.")
         except Exception as e:
             print(f"[stage5] Music skipped ({e}) — continuing narration-only.")
 
@@ -331,7 +405,7 @@ def assemble_video(timed_segments: list[dict], footage_map: dict[int, dict],
         logger = _RenderProgressLogger(on_progress)
 
     final.write_videofile(out_path, fps=30, codec="libx264", audio_codec="aac", threads=4,
-                           logger=logger if logger else None)
+                           preset=ffmpeg_preset, logger=logger if logger else None)
 
     print(f"[stage5] Final video rendered to {out_path}")
     return out_path

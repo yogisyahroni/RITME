@@ -82,6 +82,62 @@ def _get_image_tag(image_path: str, gemini_key: str = None, openai_key: str = No
         print(f"BLIP error: {e}")
         return "clip"
 
+
+def _get_video_duration(video_path: str) -> float:
+    """Probe clip duration in seconds; 0.0 if unreadable."""
+    try:
+        r = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+             "-of", "csv=p=0", video_path],
+            capture_output=True, text=True, timeout=15,
+        )
+        return float(r.stdout.strip())
+    except Exception:
+        return 0.0
+
+
+def _extract_sample_frames(video_path: str, n_frames: int = 3) -> list[str]:
+    """
+    Fase 1B.1: sample N frames spread across the clip (20%/50%/80% of duration)
+    instead of a single frame at second 1.0. Returns list of frame file paths;
+    caller is responsible for deleting them.
+    """
+    duration = _get_video_duration(video_path)
+    if duration <= 0:
+        duration = 10.0  # unknown — fall back to absolute offsets
+
+    offsets = [duration * frac for frac in (0.2, 0.5, 0.8)][:max(n_frames, 1)]
+    frames = []
+    for i, at in enumerate(offsets):
+        frame_path = f"{video_path}.sample_{i}.jpg"
+        cmd = ["ffmpeg", "-y", "-i", video_path, "-ss", str(round(at, 3)),
+               "-vframes", "1", "-q:v", "2", frame_path]
+        subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if Path(frame_path).exists():
+            frames.append(frame_path)
+    return frames
+
+
+def _combine_tags(face_tag: str | None, scene_tags: list[str], max_len: int = 60) -> str:
+    """Merge face + multi-frame scene tags into one filesystem-safe filename
+    part (alphanumeric + underscore only, bounded length)."""
+    parts = []
+    if face_tag:
+        parts.append(face_tag)
+    seen = set()
+    for t in scene_tags:
+        t = t.strip().lower()
+        if t and t != "clip" and t not in seen:
+            parts.append(t)
+            seen.add(t)
+    tag = "_".join(parts) if parts else "clip"
+    # sanitize + bound length, keep whole words at the cut
+    tag = "".join(c if c.isalnum() or c == '_' else '' for c in tag).strip('_')
+    if len(tag) > max_len:
+        cut = tag[:max_len].rstrip('_')
+        tag = cut[:cut.rfind('_')] if '_' in cut else cut
+    return tag or "clip"
+
 def extract_clips(video_path: str, output_dir: str, threshold: float = 27.0, min_duration_sec: float = 2.0, base_name: str = None, on_progress=None, topic: str = "") -> list[str]:
     """
     Extracts individual clips from a long video by detecting scene changes.
@@ -149,33 +205,25 @@ def extract_clips(video_path: str, output_dir: str, threshold: float = 27.0, min
     for i in range(1, len(filtered_scenes) + 1):
         expected_file = output_dir_path / f"{video_name}_clip_{i:03d}.mp4"
         if expected_file.exists():
-            # Extract a frame at 1 second
-            frame_path = output_dir_path / f"{expected_file.stem}_frame.jpg"
-            cmd = [
-                "ffmpeg", "-y", "-i", str(expected_file), 
-                "-ss", "00:00:01", "-vframes", "1", 
-                "-q:v", "2", str(frame_path)
-            ]
-            subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            
-            tag = "clip"
-            if frame_path.exists():
-                face_tag = _get_face_tag(str(frame_path), str(known_faces_dir))
-                scene_tag = _get_image_tag(str(frame_path))
-                
-                if face_tag and scene_tag and scene_tag != "clip":
-                    tag = f"{face_tag}_{scene_tag}"
-                elif face_tag:
-                    tag = face_tag
-                else:
-                    tag = scene_tag
-                    
-                frame_path.unlink(missing_ok=True)
-                
+            # Fase 1B.1: sample 20%/50%/80% of the clip instead of 1 frame at 1s,
+            # so the tag reflects the whole clip, not just its first moment.
+            frame_paths = _extract_sample_frames(str(expected_file), n_frames=3)
+
+            face_tag = None
+            scene_tags = []
+            for frame_path in frame_paths:
+                if face_tag is None:
+                    face_tag = _get_face_tag(frame_path, str(known_faces_dir))
+                scene_tag = _get_image_tag(frame_path)
+                scene_tags.append(scene_tag)
+                Path(frame_path).unlink(missing_ok=True)
+
+            tag = _combine_tags(face_tag, scene_tags)
+
             if topic:
                 clean_topic = "".join(c if c.isalnum() else '_' for c in topic.replace(' ', '_')).strip('_').lower()
                 tag = f"{clean_topic}_{tag}"
-                
+
             unique_id = uuid.uuid4().hex[:6]
             new_name = f"{tag}_{unique_id}.mp4"
             new_path = output_dir_path / new_name

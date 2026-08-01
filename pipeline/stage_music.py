@@ -87,6 +87,27 @@ def pick_music_file(script_segments: list[dict], music_dir: Path = MUSIC_DIR) ->
     return sorted(files, key=lambda f: f.name)[idx]
 
 
+def pick_music_by_mood(mood: str | None, music_dir: Path = MUSIC_DIR) -> Path | None:
+    """
+    Pick a music file whose name contains the given mood (e.g. "calm" ->
+    calm_guitar.mp3). Returns None when the folder is missing/empty or no
+    file matches — callers treat that as "no music".
+    """
+    music_dir = Path(music_dir)
+    if not mood or not music_dir.is_dir():
+        return None
+
+    supported = ("*.mp3", "*.wav", "*.m4a", "*.ogg", "*.flac")
+    files = []
+    for pattern in supported:
+        files.extend(music_dir.glob(pattern))
+    if not files:
+        return None
+
+    mood_files = [f for f in files if mood.lower() in f.stem.lower()]
+    return sorted(mood_files)[0] if mood_files else None
+
+
 def _narration_rms(narration_audio_path: str) -> float:
     """RMS of the narration audio in raw int16 sample units (same scale as
     the music samples we mix against); 0.0 if unreadable."""

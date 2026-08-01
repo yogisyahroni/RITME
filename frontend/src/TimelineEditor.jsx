@@ -53,6 +53,13 @@ function TimelineEditor({ narration, footageData, picks }) {
   const [error, setError] = useState(null);
   const [result, setResult] = useState(null);
   const [playing, setPlaying] = useState(false);
+  const [finishing, setFinishing] = useState({
+    add_music: false,
+    music_mood: "calm",
+    caption_style: "minimal-white-center",
+    transition_style: "hard_cut",
+    ken_burns: false,
+  });
   const videoRef = useRef(null);
   const cancelRef = useRef(null);
 
@@ -106,7 +113,13 @@ function TimelineEditor({ narration, footageData, picks }) {
       const body = {
         segments: segments.filter(s => s.video_path),
         narration_audio_path: narration?.audio_path || "",
-        output_name: `ritme_${Date.now()}`
+        output_name: `ritme_${Date.now()}`,
+        template_name: narration?.template_name || "",
+        add_music: finishing.add_music,
+        music_mood: finishing.add_music ? finishing.music_mood : null,
+        caption_style: finishing.caption_style,
+        transition_style: finishing.transition_style,
+        ken_burns: finishing.ken_burns,
       };
       if (preview) {
         const blob = await fetch(endpoint, {
@@ -191,6 +204,42 @@ function TimelineEditor({ narration, footageData, picks }) {
       </div>
       {error && <div className="flex items-center gap-2 px-4 py-3 rounded" style={{ background: "#2A1712", border: `1px solid ${C.tallyDim}` }}><AlertTriangle size={14} color={C.tally} /><span style={{ fontFamily: F.mono, fontSize: 11, color: C.paperDim }}>{error}</span></div>}
       {job && <div className="flex items-center gap-3 px-4 py-3 rounded" style={{ background: C.panel, border: `1px solid ${C.borderSoft}` }}><Loader2 size={14} color={C.amber} className="animate-spin" /><span style={{ fontFamily: F.body, fontSize: 12, color: C.paperDim }}>{job.message}</span></div>}
+      <div className="flex flex-col gap-3 px-4 py-3.5 rounded" style={{ background: C.panel, border: `1px solid ${C.borderSoft}` }}>
+        <span style={{ fontFamily: F.mono, fontSize: 10, color: C.amber, letterSpacing: "0.08em" }}>FINISHING OPTIONS</span>
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
+          <label className="flex items-center gap-2" style={{ cursor: "pointer" }}>
+            <input type="checkbox" checked={finishing.add_music} onChange={e => setFinishing({ ...finishing, add_music: e.target.checked })} style={{ accentColor: C.tally }} />
+            <span style={{ fontFamily: F.body, fontSize: 12, color: C.paper }}>Tambah musik</span>
+          </label>
+          {finishing.add_music && (
+            <label className="flex items-center gap-2">
+              <span style={{ fontFamily: F.mono, fontSize: 10, color: C.paperFaint }}>Mood</span>
+              <select value={finishing.music_mood} onChange={e => setFinishing({ ...finishing, music_mood: e.target.value })} style={{ fontFamily: F.mono, fontSize: 11, color: C.paper, background: C.panelRaised, border: `1px solid ${C.border}`, borderRadius: 3, padding: "3px 6px", outline: "none" }}>
+                {["calm", "tense", "sad", "epic", "upbeat"].map(m => <option key={m} value={m}>{m}</option>)}
+              </select>
+            </label>
+          )}
+          <label className="flex items-center gap-2">
+            <span style={{ fontFamily: F.mono, fontSize: 10, color: C.paperFaint }}>Gaya caption</span>
+            <select value={finishing.caption_style} onChange={e => setFinishing({ ...finishing, caption_style: e.target.value })} style={{ fontFamily: F.mono, fontSize: 11, color: C.paper, background: C.panelRaised, border: `1px solid ${C.border}`, borderRadius: 3, padding: "3px 6px", outline: "none" }}>
+              <option value="bold-white-bottom">Bold White Bottom</option>
+              <option value="minimal-white-center">Minimal White Center</option>
+              <option value="news-style-lower-third">News Lower Third</option>
+            </select>
+          </label>
+          <label className="flex items-center gap-2">
+            <span style={{ fontFamily: F.mono, fontSize: 10, color: C.paperFaint }}>Transisi</span>
+            <select value={finishing.transition_style} onChange={e => setFinishing({ ...finishing, transition_style: e.target.value })} style={{ fontFamily: F.mono, fontSize: 11, color: C.paper, background: C.panelRaised, border: `1px solid ${C.border}`, borderRadius: 3, padding: "3px 6px", outline: "none" }}>
+              <option value="hard_cut">Hard Cut</option>
+              <option value="crossfade">Crossfade</option>
+            </select>
+          </label>
+          <label className="flex items-center gap-2" style={{ cursor: "pointer" }}>
+            <input type="checkbox" checked={finishing.ken_burns} onChange={e => setFinishing({ ...finishing, ken_burns: e.target.checked })} style={{ accentColor: C.tally }} />
+            <span style={{ fontFamily: F.body, fontSize: 12, color: C.paper }}>Ken Burns (zoom pelan)</span>
+          </label>
+        </div>
+      </div>
       <div className="flex items-center gap-3 flex-wrap">
         <PrimaryButton onClick={() => exportTimeline(true)} disabled={job !== null} icon={Play}>Preview</PrimaryButton>
         <PrimaryButton onClick={() => exportTimeline(false)} disabled={job !== null} icon={Clapperboard}>Render Video</PrimaryButton>

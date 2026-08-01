@@ -434,6 +434,149 @@ def test_server_render_endpoint():
         (ROOT / "templates" / "test_tpl.json").unlink(missing_ok=True)
 
 
+def test_timeline_export_finishing_options():
+    print("\n[1C.1] Timeline export via assemble_video with manual finishing options")
+    from fastapi.testclient import TestClient
+    import server as server_mod
+    from config import AUDIO_CACHE_DIR
+
+    segs, total = make_timed_segments()
+    clip_a = make_test_video(Path("cache") / "test" / "clip_a.mp4", "red", 5.0)
+    clip_b = make_test_video(Path("cache") / "test" / "clip_b.mp4", "blue", 5.0)
+    clip_c = make_test_video(Path("cache") / "test" / "clip_c.mp4", "green", 5.0)
+    narration = make_test_audio(AUDIO_CACHE_DIR / "test_narration_5s.wav", 440, total)
+
+    import pipeline.stage5_assembly as s5
+    old_res = s5.OUTPUT_RESOLUTION
+    old_dir = s5.OUTPUT_DIR
+    s5.OUTPUT_RESOLUTION = (360, 640)
+    s5.OUTPUT_DIR = ROOT / "output" / "test_renders"
+    (ROOT / "output" / "test_renders").mkdir(parents=True, exist_ok=True)
+
+    def timeline_segments():
+        return [
+            {"index": 0, "video_path": str(clip_a), "narration_text": "Selamat pagi dunia hari ini", "start_trim": 0.0, "end_trim": 0.0, "duration": 3.0, "keywords": ["red"]},
+            {"index": 1, "video_path": str(clip_b), "narration_text": "Ini adalah video percobaan kedua", "start_trim": 0.0, "end_trim": 0.0, "duration": 3.0, "keywords": ["blue"]},
+            {"index": 2, "video_path": str(clip_c), "narration_text": "Terima kasih sudah menonton", "start_trim": 0.0, "end_trim": 0.0, "duration": 2.5, "keywords": ["green"]},
+        ]
+
+    try:
+        with TestClient(server_mod.app) as client:
+            # 1) all finishing OFF (defaults) — must still render (Fase 1 quality, not old ffmpeg path)
+            r_off = client.post("/api/timeline/export", json={
+                "segments": timeline_segments(),
+                "narration_audio_path": str(narration),
+                "output_name": "test_tl_off",
+            })
+            check("export all-OFF -> 200", r_off.status_code == 200, f"status={r_off.status_code}")
+
+            # 2) all ON — independent flags must not error in combination
+            r_on = client.post("/api/timeline/export", json={
+                "segments": timeline_segments(),
+                "narration_audio_path": str(narration),
+                "output_name": "test_tl_on",
+                "add_music": True, "music_mood": "calm",
+                "caption_style": "news-style-lower-third",
+                "transition_style": "crossfade",
+                "ken_burns": True,
+            })
+            check("export all-ON -> 200", r_on.status_code == 200, f"status={r_on.status_code}")
+
+            # 3) mixed combo (music + crossfade only, no Ken Burns) — proves independence
+            r_mixed = client.post("/api/timeline/export", json={
+                "segments": timeline_segments(),
+                "narration_audio_path": str(narration),
+                "output_name": "test_tl_mixed",
+                "add_music": True, "music_mood": "upbeat",
+                "transition_style": "crossfade",
+            })
+            check("export mixed -> 200", r_mixed.status_code == 200, f"status={r_mixed.status_code}")
+
+            # 4) preview endpoint — same pipeline, low-res + ultrafast
+            r_prev = client.post("/api/timeline/preview", json={
+                "segments": timeline_segments(),
+                "narration_audio_path": str(narration),
+                "output_name": "test_tl_prev",
+                "add_music": True, "music_mood": "calm",
+                "caption_style": "minimal-white-center",
+            })
+            check("preview -> 200", r_prev.status_code == 200, f"status={r_prev.status_code}")
+
+            off_path = ROOT / "output" / "test_renders" / "test_tl_off.mp4"
+            on_path = ROOT / "output" / "test_renders" / "test_tl_on.mp4"
+            prev_path = ROOT / "output" / "test_renders" / "test_tl_prev_preview.mp4"
+            check("off file exists", off_path.exists())
+            check("on file exists", on_path.exists())
+            if off_path.exists():
+                d = probe_duration(str(off_path))
+                check("off duration == narration total", abs(d - total) < 0.3, f"got {d:.2f}s want {total:.2f}s")
+            if prev_path.exists():
+                d = probe_duration(str(prev_path))
+                check("preview duration == narration total", abs(d - total) < 0.3, f"got {d:.2f}s want {total:.2f}s")
+    finally:
+        s5.OUTPUT_RESOLUTION = old_res
+        s5.OUTPUT_DIR = old_dir
+
+
+def test_export_project_finishing_metadata():
+    print("\n[1C.2] Project export embeds music/caption/transition info")
+    from fastapi.testclient import TestClient
+    import io, zipfile
+    import server as server_mod
+    from config import AUDIO_CACHE_DIR
+
+    segs, total = make_timed_segments()
+    clip_a = make_test_video(Path("cache") / "test" / "clip_a.mp4", "red", 5.0)
+    clip_b = make_test_video(Path("cache") / "test" / "clip_b.mp4", "blue", 5.0)
+    clip_c = make_test_video(Path("cache") / "test" / "clip_c.mp4", "green", 5.0)
+    narration = make_test_audio(AUDIO_CACHE_DIR / "test_narration_5s.wav", 440, total)
+    music = make_test_audio(AUDIO_CACHE_DIR / "test_music_5s.wav", 220, total + 1)
+
+    footage_map = {"0": {"video_path": str(clip_a)}, "1": {"video_path": str(clip_b)}, "2": {"video_path": str(clip_c)}}
+
+    with TestClient(server_mod.app) as client:
+        resp = client.post("/api/export/project", json={
+            "timed_segments": segs,
+            "footage_map": footage_map,
+            "narration_audio_path": str(narration),
+            "output_name": "test_finishing_export",
+            "formats": ["edl", "fcpxml", "premiere_xml", "capcut_json"],
+            "add_music": True,
+            "music_mood": "calm",
+            "music_path": str(music),
+            "caption_style": "news-style-lower-third",
+            "transition_style": "crossfade",
+            "ken_burns": True,
+        })
+        check("export endpoint 200", resp.status_code == 200, f"status={resp.status_code}")
+        if resp.status_code != 200:
+            return
+
+        zf = zipfile.ZipFile(io.BytesIO(resp.content))
+        names = zf.namelist()
+
+        edl = zf.read("test_finishing_export.edl").decode("utf-8")
+        check("EDL has music track", "MUS" in edl)
+        check("EDL has finishing NOTE", "* NOTE: Caption style" in edl and "music" in edl.lower())
+        check("EDL has music filename", Path(music).name in edl)
+
+        fcpxml = zf.read("test_finishing_export.fcpxml").decode("utf-8")
+        check("FCPXML has music clip", Path(music).stem in fcpxml)
+        check("FCPXML has finishing comment", "<!--" in fcpxml and "Caption style" in fcpxml)
+
+        premiere = zf.read("test_finishing_export_premiere.xml").decode("utf-8")
+        check("Premiere XML has music file", Path(music).stem in premiere)
+
+        html = zf.read("test_finishing_export_timeline.html").decode("utf-8")
+        check("CapCut guide mentions finishing", "Elemen Finishing" in html)
+        check("CapCut guide has music name", Path(music).name in html)
+        check("CapCut guide has caption style", "news-style-lower-third" in html)
+        check("CapCut guide has transition", "crossfade" in html)
+
+        check("zip contains music file", Path(music).name in names)
+        check("zip contains narration audio", Path(narration).name in names)
+
+
 def test_clip_smoke():
     print("\n[2.4/CLIP] Real CLIP model smoke test (env fix verification)")
     from pipeline.stage4_footage import get_clip_matcher, _extract_sample_frames
@@ -464,6 +607,8 @@ def main():
     ]
     if run_all or "--with-server" in which:
         tests.append(("server_render", test_server_render_endpoint))
+        tests.append(("timeline_export_finishing", test_timeline_export_finishing_options))
+        tests.append(("export_finishing_metadata", test_export_project_finishing_metadata))
     if run_all or "--with-clip" in which:
         tests.append(("clip_smoke", test_clip_smoke))
 

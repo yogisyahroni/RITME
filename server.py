@@ -424,6 +424,13 @@ class ExportRequest(BaseModel):
     narration_audio_path: str = ""
     output_name: str = "ritme_project"
     formats: list[str] = ["edl", "fcpxml", "premiere_xml", "capcut_json"]
+    # --- Finishing info embedded in the export (Fase 1C.2) ---
+    add_music: bool = False
+    music_mood: str | None = None
+    music_path: str | None = None   # explicit; else resolved from mood
+    caption_style: str = "minimal-white-center"
+    transition_style: str = "hard_cut"
+    ken_burns: bool = False
 
 
 @app.post("/api/export/project")
@@ -432,11 +439,32 @@ def export_project_endpoint(req: ExportRequest):
     import os
     
     footage_map_int = {int(k): v for k, v in req.footage_map.items() if v}
+
+    # Resolve the music file for the export (Fase 1C.2)
+    music_path = req.music_path
+    if not music_path and req.add_music:
+        try:
+            from pipeline import stage_music
+            picked = stage_music.pick_music_by_mood(req.music_mood) if req.music_mood else None
+            if picked is None:
+                picked = stage_music.pick_music_file(req.timed_segments)
+            music_path = str(picked) if picked else None
+        except Exception:
+            music_path = None
+
+    finishing = {
+        "music_path": music_path or "",
+        "music_mood": req.music_mood,
+        "caption_style": req.caption_style,
+        "transition_style": req.transition_style,
+        "ken_burns": req.ken_burns,
+    }
     
     try:
         zip_path = project_exporter.export_project(
             req.timed_segments, footage_map_int,
-            req.narration_audio_path, req.output_name, req.formats
+            req.narration_audio_path, req.output_name, req.formats,
+            finishing=finishing,
         )
         
         if not os.path.exists(zip_path):
@@ -492,136 +520,103 @@ class TimelineExportRequest(BaseModel):
     segments: list[TimelineSegment]
     narration_audio_path: str = ""
     output_name: str = "ritme_timeline"
+    template_name: str = ""           # optional; fallback pacing when empty
+    # --- Finishing options (Fase 1C.1): manual user choices, defaults OFF ---
+    add_music: bool = False
+    music_mood: str | None = None
+    caption_style: str = "minimal-white-center"
+    transition_style: str = "hard_cut"   # "hard_cut" | "crossfade"
+    ken_burns: bool = False
+
+
+def _timeline_to_stage5(segments: list[TimelineSegment]):
+    """Convert TimelineSegment list -> (timed_segments, footage_map) in the
+    shape assemble_video() expects. Segments without a usable video file are
+    skipped; timeline positions are rebuilt contiguously from the survivors."""
+    timed, footage = [], {}
+    cursor = 0.0
+    for i, seg in enumerate(segments):
+        if not seg.video_path or not os.path.exists(seg.video_path):
+            continue
+        dur = max(float(seg.duration), 0.5)
+        timed.append({
+            "text": seg.narration_text or f"Segmen {i + 1}",
+            "keywords": list(seg.keywords or []),
+            "start": cursor, "end": cursor + dur, "duration": dur,
+            "trim_start": float(seg.start_trim or 0.0),
+            "trim_end": float(seg.end_trim or 0.0),
+        })
+        footage[len(footage)] = {"video_path": seg.video_path}
+        cursor += dur
+    return timed, footage
+
+
+def _load_timeline_template(name: str) -> dict:
+    """Template for assembly pacing/caption resolution. Falls back to a
+    neutral default when the request carries no template name."""
+    if name:
+        try:
+            return stage1_template.load_template(name)
+        except FileNotFoundError:
+            pass
+    return {"pacing": {"avg_shot_duration": 3.0}}
+
+
+def _preview_resolution() -> tuple[int, int]:
+    """Downscaled even-numbered resolution derived from OUTPUT_RESOLUTION —
+    used by timeline preview so renders stay fast without manual ffmpeg."""
+    from config import OUTPUT_RESOLUTION
+    tw, th = OUTPUT_RESOLUTION
+    scale = 360.0 / max(tw, th)
+    w = int(round(tw * scale)); h = int(round(th * scale))
+    w += w % 2; h += h % 2
+    return (w, h)
 
 
 @app.post("/api/timeline/export")
 def timeline_export(req: TimelineExportRequest):
-    import subprocess
-    import os
-    from pathlib import Path
-    
-    output_dir = Path("output")
-    output_dir.mkdir(exist_ok=True)
-    output_path = str(output_dir / f"{req.output_name}.mp4")
-    
-    # Build ffmpeg concat filter for all trimmed clips
-    filter_parts = []
-    inputs = []
-    audio_path = None
-    total_duration = 0
-    
-    for i, seg in enumerate(req.segments):
-        if not seg.video_path or not os.path.exists(seg.video_path):
-            continue
-        
-        # Calculate trim: seek to start_trim, take (duration + end_trim) seconds
-        trim_start = seg.start_trim
-        clip_duration = seg.duration
-        
-        # Input label
-        input_label = f"v{i}"
-        inputs.append(["-i", seg.video_path])
-        
-        # Trim filter
-        filter_parts.append(
-            f"[{i}:v]trim=start={trim_start}:duration={clip_duration},setpts=PTS-STARTPTS[{input_label}_v]"
-        )
-        total_duration += clip_duration
-    
-    if not filter_parts:
+    timed, footage = _timeline_to_stage5(req.segments)
+    if not timed:
         raise HTTPException(400, "No valid video segments to export")
-    
-    # Audio track from narration
-    if req.narration_audio_path and os.path.exists(req.narration_audio_path):
-        audio_path = req.narration_audio_path
-        inputs.append(["-i", audio_path])
-        # Concatenate video plus audio
-        concat_v = "".join([f"[{i}_v]" for i in range(len(req.segments))])
-        filter_complex = ";".join(filter_parts) + f";{concat_v}concat=n={len(req.segments)}:v=1:a=0[outv]"
-        
-        cmd = ["ffmpeg", "-y"]
-        for inp in inputs:
-            cmd.extend(inp)
-        cmd.extend(["-filter_complex", filter_complex, "-map", "[outv]"])
-        
-        # Map audio if we have narration
-        cmd.extend(["-map", f"{len(req.segments)}:a:0", "-c:v", "libx264", "-preset", "medium", 
-                    "-crf", "22", "-c:a", "aac", "-shortest", output_path])
-    else:
-        # Video only
-        concat_v = "".join([f"[{i}_v]" for i in range(len(req.segments))])
-        filter_complex = ";".join(filter_parts) + f";{concat_v}concat=n={len(req.segments)}:v=1:a=0[outv]"
-        
-        cmd = ["ffmpeg", "-y"]
-        for inp in inputs:
-            cmd.extend(inp)
-        cmd.extend(["-filter_complex", filter_complex, "-map", "[outv]", "-c:v", "libx264", "-preset", "medium",
-                    "-crf", "22", output_path])
-    
-    try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
-        if result.returncode != 0:
-            raise RuntimeError(f"ffmpeg error: {result.stderr[:500]}")
-    except subprocess.TimeoutExpired:
-        raise HTTPException(500, "Export timeout (>5 min)")
-    except Exception as e:
-        raise HTTPException(500, f"Export failed: {e}")
-    
-    if os.path.exists(output_path):
-        from fastapi.responses import FileResponse
-        return FileResponse(output_path, media_type="video/mp4", filename=f"{req.output_name}.mp4")
-    else:
-        raise HTTPException(500, "Output file not found")
+
+    template = _load_timeline_template(req.template_name)
+
+    out_path = stage5_assembly.assemble_video(
+        timed, footage, req.narration_audio_path, template,
+        output_name=req.output_name,
+        add_music=req.add_music, music_mood=req.music_mood,
+        caption_style=req.caption_style,
+        transition_style=req.transition_style,
+        ken_burns=req.ken_burns,
+    )
+    if not os.path.exists(out_path):
+        raise HTTPException(500, "Render selesai tapi file output tidak ditemukan")
+    return FileResponse(out_path, media_type="video/mp4", filename=f"{req.output_name}.mp4")
 
 
 @app.post("/api/timeline/preview")
 def timeline_preview(req: TimelineExportRequest):
-    """Generate a low-res preview of the timeline quickly."""
-    import subprocess
-    import os
-    from pathlib import Path
-    
-    output_dir = Path("output")
-    output_dir.mkdir(exist_ok=True)
-    output_path = str(output_dir / f"{req.output_name}_preview.mp4")
-    
-    filter_parts = []
-    inputs = []
-    
-    for i, seg in enumerate(req.segments):
-        if not seg.video_path or not os.path.exists(seg.video_path):
-            continue
-        trim_start = seg.start_trim
-        clip_duration = seg.duration
-        inputs.append(["-i", seg.video_path])
-        filter_parts.append(
-            f"[{i}:v]trim=start={trim_start}:duration={clip_duration},setpts=PTS-STARTPTS,scale=640:-2[v{i}]"
-        )
-    
-    if not filter_parts:
+    """Low-res fast preview through the same assembly pipeline as the final
+    export (so finishing options are visible in preview too)."""
+    timed, footage = _timeline_to_stage5(req.segments)
+    if not timed:
         raise HTTPException(400, "No valid segments")
-    
-    concat_v = "".join([f"[v{i}]" for i in range(len(req.segments))])
-    filter_complex = ";".join(filter_parts) + f";{concat_v}concat=n={len(req.segments)}:v=1:a=0,format=yuv420p[out]"
-    
-    cmd = ["ffmpeg", "-y"]
-    for inp in inputs:
-        cmd.extend(inp)
-    cmd.extend(["-filter_complex", filter_complex, "-map", "[out]", "-c:v", "libx264", "-preset", "ultrafast",
-                "-crf", "28", "-movflags", "+faststart", output_path])
-    
-    try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
-        if result.returncode != 0:
-            raise RuntimeError(f"ffmpeg preview error: {result.stderr[:300]}")
-    except Exception as e:
-        raise HTTPException(500, f"Preview failed: {e}")
-    
-    if os.path.exists(output_path):
-        from fastapi.responses import FileResponse
-        return FileResponse(output_path, media_type="video/mp4")
-    else:
+
+    template = _load_timeline_template(req.template_name)
+
+    out_path = stage5_assembly.assemble_video(
+        timed, footage, req.narration_audio_path, template,
+        output_name=f"{req.output_name}_preview",
+        add_music=req.add_music, music_mood=req.music_mood,
+        caption_style=req.caption_style,
+        transition_style=req.transition_style,
+        ken_burns=req.ken_burns,
+        resolution=_preview_resolution(),
+        ffmpeg_preset="ultrafast",
+    )
+    if not os.path.exists(out_path):
         raise HTTPException(500, "Preview generation failed")
+    return FileResponse(out_path, media_type="video/mp4")
 
 # Static file serving: outputs (video/audio previews) + frontend
 # ============================================================

@@ -1,0 +1,37 @@
+{
+  "calm": {
+    "mood": "calm",
+    "file": "calm_1.mp3",
+    "title": "Ambient Piano Music",
+    "channel": "Soothing Ambient Selections",
+    "url": "https://www.youtube.com/watch?v=63PcppxdDGY"
+  },
+  "tense": {
+    "mood": "tense",
+    "file": "tense_1.mp3",
+    "title": "Breathtaking - FreeCopyright Music | Documentary | Scary video | Dark Ambience Tense",
+    "channel": "Theodre Music",
+    "url": "https://www.youtube.com/watch?v=NkU_HIuPk1c"
+  },
+  "sad": {
+    "mood": "sad",
+    "file": "sad_1.mp3",
+    "title": "Backsound Sedih - Sad Emotional - Instrumen No Copyright",
+    "channel": "Bang Nono",
+    "url": "https://www.youtube.com/watch?v=vYZjRz_dRQU"
+  },
+  "epic": {
+    "mood": "epic",
+    "file": "epic_1.mp3",
+    "title": "Epic Orchestral Cinematic Music - Awaken [Copyright Free]",
+    "channel": "Whitesand",
+    "url": "https://www.youtube.com/watch?v=rUM0pC8lFE8"
+  },
+  "upbeat": {
+    "mood": "upbeat",
+    "file": "upbeat_1.mp3",
+    "title": "NO COPYRIGHT- PUNKY HAPPY UPBEAT FREE BACKGROUND MUSIC FOR YOUTUBE VIDEO",
+    "channel": "WARMLIGHTMUSIC",
+    "url": "https://www.youtube.com/watch?v=X2qwMfi4wyo"
+  }
+}
