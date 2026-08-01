@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { Play, Download, Trash2, ArrowUp, ArrowDown, Scissors, Clapperboard, Loader2, AlertTriangle, Info, Film, Captions, Undo2, Redo2, Music2, GripVertical, ZoomIn, Zap } from "lucide-react";
+import { Play, Download, Trash2, ArrowUp, ArrowDown, Scissors, Clapperboard, Loader2, AlertTriangle, Info, Film, Captions, Undo2, Redo2, Music2, GripVertical, ZoomIn, Zap, Save, Upload, FileText, Volume2, VolumeX } from "lucide-react";
 
 const C = {
   bg: "#15130F",
@@ -80,11 +80,35 @@ function TimelineEditor({ narration, footageData, picks }) {
   const videoRef = useRef(null);
   const cancelRef = useRef(null);
   const firstRunRef = useRef(true);
+  const restoredRef = useRef(false);
+  const fileInputRef = useRef(null);
+  const audioRefs = useRef({});
+  // Fase 4: persist project (localStorage autosave + export/import JSON)
+  const AUDIO_KEY = "ritme_timeline_project_v1";
+  const [selectedIdx, setSelectedIdx] = useState(null);   // shortcut target
+  const [playingAudio, setPlayingAudio] = useState(null); // segmen audio lagi play
+  const [restoreNotice, setRestoreNotice] = useState(false);
 
   const pxPerSec = 28 * zoom;
 
+  // Restore autosaved project on mount (sebelum narration load timpa)
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(AUDIO_KEY);
+      if (!raw) return;
+      const proj = JSON.parse(raw);
+      if (proj?.segments?.length) {
+        setSegments(proj.segments);
+        setFinishing(f => ({ ...f, ...(proj.finishing || {}) }));
+        setRestoreNotice(true);
+        restoredRef.current = true;
+      }
+    } catch { /* corrupt — abaikan */ }
+  }, []);
+
   useEffect(() => {
     if (!narration?.segments) return;
+    if (restoredRef.current) { restoredRef.current = false; return; }
     const segs = narration.segments.map((s, idx) => {
       const cand = footageData?.[String(idx)]?.candidates?.[picks?.[idx] ?? 0];
       return {
@@ -101,6 +125,38 @@ function TimelineEditor({ narration, footageData, picks }) {
     setSegments(segs);
     firstRunRef.current = true;
   }, [narration, footageData, picks]);
+
+  // Autosave (debounce 800ms) — skip sebelum ada segmen
+  useEffect(() => {
+    if (!segments.length) return;
+    const t = setTimeout(() => {
+      try {
+        localStorage.setItem(AUDIO_KEY, JSON.stringify({ segments, finishing, savedAt: Date.now() }));
+      } catch { /* quota — abaikan */ }
+    }, 800);
+    return () => clearTimeout(t);
+  }, [segments, finishing]);
+
+  // Keyboard shortcuts: Ctrl+Z/Y undo-redo, Delete hapus, S split, Space play/pause
+  useEffect(() => {
+    const onKey = (e) => {
+      const tag = (e.target.tagName || "").toLowerCase();
+      if (tag === "input" || tag === "textarea" || tag === "select") return;
+      const k = e.key.toLowerCase();
+      if ((e.ctrlKey || e.metaKey) && k === "z") { e.preventDefault(); e.shiftKey ? redo() : undo(); }
+      else if ((e.ctrlKey || e.metaKey) && k === "y") { e.preventDefault(); redo(); }
+      else if (e.key === "Delete" && selectedIdx != null) { e.preventDefault(); removeSegment(selectedIdx); }
+      else if (k === "s" && selectedIdx != null) { e.preventDefault(); splitSegment(selectedIdx); }
+      else if (e.key === " " && !e.ctrlKey) {
+        if (videoRef.current && (videoRef.current.src || videoRef.current.currentSrc)) {
+          e.preventDefault();
+          if (videoRef.current.paused) videoRef.current.play(); else videoRef.current.pause();
+        }
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
 
   useEffect(() => () => cancelRef.current && cancelRef.current(), []);
 
@@ -233,6 +289,69 @@ function TimelineEditor({ narration, footageData, picks }) {
     finally { setSubtitleBusy(false); }
   };
 
+  // Fase 4: Save/Load project + SRT + audio preview per segmen
+  const exportProject = () => {
+    const data = {
+      segments, finishing, savedAt: Date.now(),
+      narrationMeta: { template_name: narration?.template_name || "" },
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `ritme_project_${new Date().toISOString().slice(0, 10)}.ritme.json`;
+    a.click();
+  };
+
+  const importProject = (file) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const data = JSON.parse(reader.result);
+        if (!data?.segments?.length) throw new Error("tidak ada segmen");
+        pushHistory();
+        setSegments(data.segments);
+        setFinishing(f => ({ ...f, ...(data.finishing || {}) }));
+        setRestoreNotice(false);
+        setError(null);
+      } catch { setError("File project tidak valid (bukan .ritme.json)"); }
+    };
+    reader.readAsText(file);
+  };
+
+  const downloadSrt = async () => {
+    setError(null);
+    try {
+      const res = await fetch("/api/timeline/subtitles", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ segments: segments.map(s => ({
+          index: s.index, text: s.narration_text,
+          audio_path: narration?.segment_audio_paths?.[s.index] || "",
+          keywords: s.keywords || [],
+        })) }),
+      });
+      if (!res.ok) throw new Error("Export SRT gagal");
+      const text = await res.text();
+      const blob = new Blob([text], { type: "application/x-subrip" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "ritme_subtitles.srt";
+      a.click();
+    } catch (e) { setError(String(e)); }
+  };
+
+  const toggleSegAudio = (idx) => {
+    const path = narration?.segment_audio_paths?.[idx];
+    if (!path) return;
+    const cur = audioRefs.current[idx];
+    if (cur && playingAudio === idx) { cur.pause(); cur.currentTime = 0; setPlayingAudio(null); return; }
+    if (cur) cur.pause();
+    const a = new Audio(path);
+    audioRefs.current[idx] = a;
+    a.onended = () => setPlayingAudio(null);
+    a.play().catch(() => {});
+    setPlayingAudio(idx);
+  };
+
   const exportTimeline = async (preview = false) => {
     setError(null);
     setJob({ progress: 5, message: preview ? "Membuat preview..." : "Merender video..." });
@@ -338,8 +457,21 @@ function TimelineEditor({ narration, footageData, picks }) {
             <span style={{ fontFamily: F.mono, fontSize: 10, color: C.paperDim }}>Auto-preview</span>
           </label>
           <PrimaryButton onClick={regenerateSubtitles} disabled={subtitleBusy || segments.length === 0} loading={subtitleBusy} icon={Captions}>Sinkronkan Subtitle</PrimaryButton>
+          <div className="w-px self-stretch" style={{ background: C.borderSoft, margin: "2px 2px" }} />
+          <IconButton onClick={exportProject} icon={Save} disabled={segments.length === 0} title="Simpan project (.ritme.json)" color={C.amber} />
+          <IconButton onClick={() => fileInputRef.current?.click()} icon={Upload} title="Muat project (.ritme.json)" color={C.amber} />
+          <input ref={fileInputRef} type="file" accept=".ritme.json,.json" style={{ display: "none" }} onChange={e => { if (e.target.files?.[0]) importProject(e.target.files[0]); e.target.value = ""; }} />
+          <IconButton onClick={downloadSrt} icon={FileText} disabled={segments.length === 0} title="Download subtitle (.srt)" color={C.caption} />
         </div>
       </div>
+
+      {restoreNotice && (
+        <div className="flex items-center gap-3 px-4 py-2.5 rounded" style={{ background: "#241D12", border: `1px solid ${C.amber}55` }}>
+          <Info size={14} color={C.amber} />
+          <span style={{ fontFamily: F.body, fontSize: 12, color: C.paperDim, flex: 1 }}>Project tersimpan otomatis berhasil dipulihkan (edit terakhir tetap tersimpan di browser ini).</span>
+          <button onClick={() => setRestoreNotice(false)} style={{ fontFamily: F.mono, fontSize: 11, color: C.amber, background: "none", border: "none", cursor: "pointer", padding: 0 }}>OK</button>
+        </div>
+      )}
 
       {/* ===== Multi-track timeline (3.1) ===== */}
       <div className="flex flex-col gap-3 rounded p-4" style={{ background: C.panel, border: `1px solid ${C.borderSoft}`, overflowX: "auto" }}>
@@ -452,7 +584,9 @@ function TimelineEditor({ narration, footageData, picks }) {
       <div className="flex flex-col gap-2">
         <span style={{ fontFamily: F.mono, fontSize: 10, color: C.paperFaint, letterSpacing: "0.08em", marginBottom: 4 }}>DETAIL SEGMEN</span>
         {segments.map((s, i) => (
-          <div key={`d-${s.index}-${i}`} className="flex items-center gap-3 px-4 py-3 rounded" style={{ background: C.panel, border: `1px solid ${C.borderSoft}` }}>
+          <div key={`d-${s.index}-${i}`} onClick={() => setSelectedIdx(selectedIdx === i ? null : i)}
+            className="flex items-center gap-3 px-4 py-3 rounded"
+            style={{ background: selectedIdx === i ? "#26221A" : C.panel, border: `1px solid ${selectedIdx === i ? C.amber + "66" : C.borderSoft}`, cursor: "pointer" }}>
             <div className="flex items-center justify-center rounded-full" style={{ width: 26, height: 26, background: C.panelRaised, border: `1px solid ${C.border}`, flexShrink: 0 }}>
               <span style={{ fontFamily: F.mono, fontSize: 11, color: C.cyan, fontWeight: 600 }}>{i + 1}</span>
             </div>
@@ -480,10 +614,14 @@ function TimelineEditor({ narration, footageData, picks }) {
             </div>
             <span style={{ fontFamily: F.mono, fontSize: 11, color: C.paperFaint, width: 40, textAlign: "right", flexShrink: 0 }}>{fmt(Math.max(s.duration - s.start_trim - s.end_trim, 0.5))}</span>
             <div className="flex items-center gap-1 flex-shrink-0">
-              <IconButton onClick={() => splitSegment(i)} icon={Scissors} title="Split" color={C.amber} />
-              <IconButton onClick={() => moveSegment(i, -1)} icon={ArrowUp} disabled={i === 0} title="Naik" />
-              <IconButton onClick={() => moveSegment(i, 1)} icon={ArrowDown} disabled={i === segments.length - 1} title="Turun" />
-              {segments.length > 1 && <IconButton onClick={() => removeSegment(i)} icon={Trash2} title="Hapus" color={C.red} />}
+              {narration?.segment_audio_paths?.[s.index] && (
+                <IconButton onClick={e => { e.stopPropagation(); toggleSegAudio(i); }} icon={playingAudio === i ? VolumeX : Volume2}
+                  title={playingAudio === i ? "Hentikan audio" : "Preview narasi segmen ini"} color={playingAudio === i ? C.cyan : C.paperDim} />
+              )}
+              <IconButton onClick={e => { e.stopPropagation(); splitSegment(i); }} icon={Scissors} title="Split" color={C.amber} />
+              <IconButton onClick={e => { e.stopPropagation(); moveSegment(i, -1); }} icon={ArrowUp} disabled={i === 0} title="Naik" />
+              <IconButton onClick={e => { e.stopPropagation(); moveSegment(i, 1); }} icon={ArrowDown} disabled={i === segments.length - 1} title="Turun" />
+              {segments.length > 1 && <IconButton onClick={e => { e.stopPropagation(); removeSegment(i); }} icon={Trash2} title="Hapus" color={C.red} />}
             </div>
           </div>
         ))}
@@ -540,7 +678,8 @@ function TimelineEditor({ narration, footageData, picks }) {
         <Info size={14} color={C.amber} style={{ marginTop: 1, flexShrink: 0 }} />
         <span style={{ fontFamily: F.body, fontSize: 11.5, color: C.paperDim, lineHeight: 1.5 }}>
           Drag clip di track Video untuk mengubah urutan · tarik handle kiri/kanan untuk trim · ✂️ untuk split ·
-          dropdown di clip untuk ganti footage · track Musik untuk ganti mood · undo/redo tersedia ·
+          dropdown di clip untuk ganti footage · track Musik untuk ganti mood · project auto-tersimpan (💾 ekspor .ritme.json) ·
+          subtitle .srt siap download · Shortcut: Ctrl+Z/Y undo-redo, Delete hapus segmen terpilih, S split, Spasi play/pause ·
           Auto-preview merender preview kecil otomatis 1.5s setelah edit.
         </span>
       </div>

@@ -744,6 +744,35 @@ def test_fase34_subtitle_regenerate():
         check("cumulative windows", segs[1]["start"] >= segs[0]["end"] - 0.01)
 
 
+def test_fase4_srt_export():
+    print("\n[4] SRT export (segments_to_srt + endpoint)")
+    from pipeline.stage3_narration import _srt_ts, segments_to_srt
+    check("srt timestamp format", _srt_ts(65.5) == "00:01:05,500")
+    check("srt timestamp overflow", _srt_ts(59.999) == "00:01:00,000" or _srt_ts(59.999) == "00:00:59,999")
+    timed = [
+        {"text": "Halo dunia ini kata satu dua tiga empat lima enam tujuh delapan", "start": 0.0, "end": 4.0,
+         "words": [{"word": f"w{i}", "start": i * 0.4, "end": i * 0.4 + 0.3} for i in range(10)]},
+        {"text": "Segmen kedua tanpa kata", "start": 4.0, "end": 6.0, "words": []},
+    ]
+    srt = segments_to_srt(timed)
+    check("srt has cues", srt.count("\n\n") >= 2, f"cues={srt.count(chr(10) + chr(10))}")
+    check("srt has both texts", "Segmen kedua tanpa kata" in srt and "w0" in srt)
+    check("srt timestamps valid", "00:00:00,000 --> " in srt and "00:00:04,000" in srt)
+    check("srt numbered", srt.startswith("1\n"))
+
+    from fastapi.testclient import TestClient
+    import server as server_mod
+    with TestClient(server_mod.app) as client:
+        resp = client.post("/api/timeline/subtitles", json={"segments": [
+            {"index": 0, "text": "satu dua tiga", "audio_path": "", "keywords": []},
+            {"index": 1, "text": "empat lima", "audio_path": "", "keywords": []},
+        ]})
+        check("endpoint 200", resp.status_code == 200, f"status={resp.status_code}")
+        check("content-type srt", "subrip" in resp.headers.get("content-type", ""))
+        check("endpoint returns cues", "1\n00:00:00,000 --> " in resp.text)
+        check("endpoint has fallback text", "satu dua tiga" in resp.text)
+
+
 def main():
     which = set(sys.argv[1:])
     run_all = "--all" in which or len(which) == 0
@@ -759,6 +788,7 @@ def main():
         ("stage5_assembly", test_stage5_assembly),
         ("clip_sidecar_1b4", test_fase14_clip_sidecar),
         ("per_segment_audio_30", test_fase3_per_segment_audio),
+        ("srt_export", test_fase4_srt_export),
     ]
     if run_all or "--with-server" in which:
         tests.append(("server_render", test_server_render_endpoint))
@@ -767,6 +797,7 @@ def main():
         tests.append(("script_generate_with_footage", test_script_generate_with_footage))
         tests.append(("footage_match_wait", test_footage_match_waits_for_extraction))
         tests.append(("subtitle_regenerate", test_fase34_subtitle_regenerate))
+        tests.append(("srt_endpoint", test_fase4_srt_export))
     if run_all or "--with-clip" in which:
         tests.append(("clip_smoke", test_clip_smoke))
 

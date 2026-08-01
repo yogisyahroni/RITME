@@ -511,6 +511,57 @@ def transcribe_segment_audio(segments_with_audio: list[dict], model_size: str = 
     return timed
 
 
+def _srt_ts(t: float) -> str:
+    """Seconds -> SRT timestamp (HH:MM:SS,mmm)."""
+    h = int(t // 3600); m = int((t % 3600) // 60); s = int(t % 60)
+    ms = int(round((t - int(t)) * 1000))
+    if ms >= 1000:  # rounding overflow
+        ms = 0; s += 1
+    return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
+
+
+def segments_to_srt(timed_segments: list[dict]) -> str:
+    """
+    Build an .srt file from timed segments (with per-word timestamps).
+    Word-level cues are grouped back into sentence cues per segment; if a
+    segment has no word timing, its text is placed at the segment window.
+    """
+    lines = []
+    idx = 1
+    for seg in timed_segments:
+        words = seg.get("words") or []
+        text = (seg.get("text") or "").strip()
+        start = float(seg.get("start", 0.0)); end = float(seg.get("end", start + 1.0))
+        if words and text:
+            # group words -> line per ~8 words, using real word timings
+            chunk, chunk_words, chunk_start = [], [], None
+            def flush():
+                nonlocal idx, chunk, chunk_words, chunk_start
+                if not chunk_words:
+                    return
+                cs = chunk_start if chunk_start is not None else start
+                ce = chunk_words[-1]["end"]
+                cue = " ".join(chunk)
+                lines.append(f"{idx}\n{_srt_ts(cs)} --> {_srt_ts(ce)}\n{cue}\n")
+                idx += 1
+                chunk, chunk_words, chunk_start = [], [], None
+            for w in words:
+                word = w.get("word", "").strip()
+                if not word:
+                    continue
+                if chunk_start is None:
+                    chunk_start = w["start"]
+                chunk.append(word)
+                chunk_words.append(w)
+                if len(chunk) >= 8:
+                    flush()
+            flush()
+        elif text:
+            lines.append(f"{idx}\n{_srt_ts(start)} --> {_srt_ts(end)}\n{text}\n")
+            idx += 1
+    return "\n".join(lines) + "\n"
+
+
 def align_keywords_to_timestamps(script_segments: list[dict], word_timestamps: list[dict]) -> list[dict]:
     """
     Walks through the narration word-by-word (in order) and assigns each

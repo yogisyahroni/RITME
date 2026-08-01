@@ -40,7 +40,7 @@ for _stream in (sys.stdout, sys.stderr):
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
 import json
 import os
@@ -799,6 +799,22 @@ def timeline_preview(req: TimelineExportRequest):
 
 class SubtitleRegenRequest(BaseModel):
     segments: list[dict]  # [{index, text, audio_path, keywords?}]
+
+
+@app.post("/api/timeline/subtitles")
+def timeline_subtitles(req: SubtitleRegenRequest):
+    """Export .srt from the timeline's per-segment word timestamps.
+    Falls back to re-transcribing segment audio when word timing is missing."""
+    try:
+        timed = stage3_narration.transcribe_segment_audio([dict(s) for s in req.segments])
+    except Exception:
+        timed = [dict(s) for s in req.segments]
+    srt = stage3_narration.segments_to_srt(timed)
+    return Response(
+        content=srt,
+        media_type="application/x-subrip",
+        headers={"Content-Disposition": 'attachment; filename="ritme_subtitles.srt"'},
+    )
 
 
 @app.post("/api/timeline/regenerate_subtitles")
