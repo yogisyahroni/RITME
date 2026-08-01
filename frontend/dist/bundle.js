@@ -1088,7 +1088,7 @@
             }
             return dispatcher.useContext(Context);
           }
-          function useState4(initialState) {
+          function useState5(initialState) {
             var dispatcher = resolveDispatcher();
             return dispatcher.useState(initialState);
           }
@@ -1096,11 +1096,11 @@
             var dispatcher = resolveDispatcher();
             return dispatcher.useReducer(reducer, initialArg, init);
           }
-          function useRef4(initialValue) {
+          function useRef5(initialValue) {
             var dispatcher = resolveDispatcher();
             return dispatcher.useRef(initialValue);
           }
-          function useEffect4(create, deps) {
+          function useEffect5(create, deps) {
             var dispatcher = resolveDispatcher();
             return dispatcher.useEffect(create, deps);
           }
@@ -1883,15 +1883,15 @@
           exports.useContext = useContext;
           exports.useDebugValue = useDebugValue;
           exports.useDeferredValue = useDeferredValue;
-          exports.useEffect = useEffect4;
+          exports.useEffect = useEffect5;
           exports.useId = useId;
           exports.useImperativeHandle = useImperativeHandle;
           exports.useInsertionEffect = useInsertionEffect;
           exports.useLayoutEffect = useLayoutEffect;
           exports.useMemo = useMemo;
           exports.useReducer = useReducer;
-          exports.useRef = useRef4;
-          exports.useState = useState4;
+          exports.useRef = useRef5;
+          exports.useState = useState5;
           exports.useSyncExternalStore = useSyncExternalStore;
           exports.useTransition = useTransition;
           exports.version = ReactVersion;
@@ -2387,9 +2387,9 @@
           if (typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ !== "undefined" && typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart === "function") {
             __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart(new Error());
           }
-          var React5 = require_react();
+          var React6 = require_react();
           var Scheduler = require_scheduler();
-          var ReactSharedInternals = React5.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED;
+          var ReactSharedInternals = React6.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED;
           var suppressWarning = false;
           function setSuppressWarning(newSuppressWarning) {
             {
@@ -3996,7 +3996,7 @@
             {
               if (props.value == null) {
                 if (typeof props.children === "object" && props.children !== null) {
-                  React5.Children.forEach(props.children, function(child) {
+                  React6.Children.forEach(props.children, function(child) {
                     if (child == null) {
                       return;
                     }
@@ -23586,11 +23586,11 @@
   });
 
   // entry.jsx
-  var import_react6 = __toESM(require_react());
+  var import_react7 = __toESM(require_react());
   var import_client = __toESM(require_client());
 
   // src/App.jsx
-  var import_react5 = __toESM(require_react());
+  var import_react6 = __toESM(require_react());
 
   // src/TimelineEditor.jsx
   var import_react3 = __toESM(require_react());
@@ -23746,6 +23746,19 @@
     ["circle", { cx: "12", cy: "12", r: "10", key: "1mglay" }],
     ["path", { d: "M12 16v-4", key: "1dtifu" }],
     ["path", { d: "M12 8h.01", key: "e9boi3" }]
+  ]);
+
+  // node_modules/lucide-react/dist/esm/icons/layers.js
+  var Layers = createLucideIcon("Layers", [
+    [
+      "path",
+      {
+        d: "m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z",
+        key: "8b97xw"
+      }
+    ],
+    ["path", { d: "m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65", key: "dd6zsq" }],
+    ["path", { d: "m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65", key: "ep9fru" }]
   ]);
 
   // node_modules/lucide-react/dist/esm/icons/link-2.js
@@ -23984,8 +23997,26 @@
       music_mood: "calm",
       caption_style: "minimal-white-center",
       transition_style: "hard_cut",
-      ken_burns: false
+      ken_burns: false,
+      watermark_path: "",
+      watermark_name: "",
+      watermark_pos: "bottom-right"
     });
+    const wmRef = (0, import_react3.useRef)(null);
+    const onWatermarkFile = async (e) => {
+      const f = e.target.files && e.target.files[0];
+      if (!f) return;
+      try {
+        const fd = new FormData();
+        fd.append("image", f);
+        const res = await fetch("/api/watermark/upload", { method: "POST", body: fd });
+        if (!res.ok) throw new Error("Upload watermark gagal");
+        const data = await res.json();
+        setFinishing((prev) => ({ ...prev, watermark_path: data.watermark_path, watermark_name: f.name }));
+      } catch (err) {
+        setError(String(err));
+      }
+    };
     const videoRef = (0, import_react3.useRef)(null);
     const cancelRef = (0, import_react3.useRef)(null);
     const firstRunRef = (0, import_react3.useRef)(true);
@@ -24284,7 +24315,9 @@
           music_mood: finishing.add_music ? finishing.music_mood : null,
           caption_style: finishing.caption_style,
           transition_style: finishing.transition_style,
-          ken_burns: finishing.ken_burns
+          ken_burns: finishing.ken_burns,
+          watermark_path: finishing.watermark_path || null,
+          watermark_pos: finishing.watermark_pos
         };
         const resp = await fetch(endpoint, {
           method: "POST",
@@ -24509,7 +24542,20 @@
         e.stopPropagation();
         removeSegment(i);
       }, icon: Trash2, title: "Hapus", color: C.red }))
-    ))), error && /* @__PURE__ */ import_react3.default.createElement("div", { className: "flex items-center gap-2 px-4 py-3 rounded", style: { background: "#2A1712", border: `1px solid ${C.tallyDim}` } }, /* @__PURE__ */ import_react3.default.createElement(TriangleAlert, { size: 14, color: C.tally }), /* @__PURE__ */ import_react3.default.createElement("span", { style: { fontFamily: F.mono, fontSize: 11, color: C.paperDim } }, error)), job && /* @__PURE__ */ import_react3.default.createElement("div", { className: "flex items-center gap-3 px-4 py-3 rounded", style: { background: C.panel, border: `1px solid ${C.borderSoft}` } }, /* @__PURE__ */ import_react3.default.createElement(LoaderCircle, { size: 14, color: C.amber, className: "animate-spin" }), /* @__PURE__ */ import_react3.default.createElement("span", { style: { fontFamily: F.body, fontSize: 12, color: C.paperDim } }, job.message)), /* @__PURE__ */ import_react3.default.createElement("div", { className: "flex flex-col gap-3 px-4 py-3.5 rounded", style: { background: C.panel, border: `1px solid ${C.borderSoft}` } }, /* @__PURE__ */ import_react3.default.createElement("span", { style: { fontFamily: F.mono, fontSize: 10, color: C.amber, letterSpacing: "0.08em" } }, "FINISHING OPTIONS"), /* @__PURE__ */ import_react3.default.createElement("div", { className: "flex flex-wrap items-center gap-x-5 gap-y-3" }, /* @__PURE__ */ import_react3.default.createElement("label", { className: "flex items-center gap-2", style: { cursor: "pointer" } }, /* @__PURE__ */ import_react3.default.createElement("input", { type: "checkbox", checked: finishing.add_music, onChange: (e) => setFinishing({ ...finishing, add_music: e.target.checked }), style: { accentColor: C.tally } }), /* @__PURE__ */ import_react3.default.createElement("span", { style: { fontFamily: F.body, fontSize: 12, color: C.paper } }, "Tambah musik")), finishing.add_music && /* @__PURE__ */ import_react3.default.createElement("label", { className: "flex items-center gap-2" }, /* @__PURE__ */ import_react3.default.createElement("span", { style: { fontFamily: F.mono, fontSize: 10, color: C.paperFaint } }, "Mood"), /* @__PURE__ */ import_react3.default.createElement("select", { value: finishing.music_mood, onChange: (e) => setFinishing({ ...finishing, music_mood: e.target.value }), style: { fontFamily: F.mono, fontSize: 11, color: C.paper, background: C.panelRaised, border: `1px solid ${C.border}`, borderRadius: 3, padding: "3px 6px", outline: "none" } }, ["calm", "tense", "sad", "epic", "upbeat"].map((m) => /* @__PURE__ */ import_react3.default.createElement("option", { key: m, value: m }, m)))), /* @__PURE__ */ import_react3.default.createElement("label", { className: "flex items-center gap-2" }, /* @__PURE__ */ import_react3.default.createElement("span", { style: { fontFamily: F.mono, fontSize: 10, color: C.paperFaint } }, "Gaya caption"), /* @__PURE__ */ import_react3.default.createElement("select", { value: finishing.caption_style, onChange: (e) => setFinishing({ ...finishing, caption_style: e.target.value }), style: { fontFamily: F.mono, fontSize: 11, color: C.paper, background: C.panelRaised, border: `1px solid ${C.border}`, borderRadius: 3, padding: "3px 6px", outline: "none" } }, /* @__PURE__ */ import_react3.default.createElement("option", { value: "bold-white-bottom" }, "Bold White Bottom"), /* @__PURE__ */ import_react3.default.createElement("option", { value: "minimal-white-center" }, "Minimal White Center"), /* @__PURE__ */ import_react3.default.createElement("option", { value: "news-style-lower-third" }, "News Lower Third"))), /* @__PURE__ */ import_react3.default.createElement("label", { className: "flex items-center gap-2" }, /* @__PURE__ */ import_react3.default.createElement("span", { style: { fontFamily: F.mono, fontSize: 10, color: C.paperFaint } }, "Transisi"), /* @__PURE__ */ import_react3.default.createElement("select", { value: finishing.transition_style, onChange: (e) => setFinishing({ ...finishing, transition_style: e.target.value }), style: { fontFamily: F.mono, fontSize: 11, color: C.paper, background: C.panelRaised, border: `1px solid ${C.border}`, borderRadius: 3, padding: "3px 6px", outline: "none" } }, /* @__PURE__ */ import_react3.default.createElement("option", { value: "hard_cut" }, "Hard Cut"), /* @__PURE__ */ import_react3.default.createElement("option", { value: "crossfade" }, "Crossfade"))), /* @__PURE__ */ import_react3.default.createElement("label", { className: "flex items-center gap-2", style: { cursor: "pointer" } }, /* @__PURE__ */ import_react3.default.createElement("input", { type: "checkbox", checked: finishing.ken_burns, onChange: (e) => setFinishing({ ...finishing, ken_burns: e.target.checked }), style: { accentColor: C.tally } }), /* @__PURE__ */ import_react3.default.createElement("span", { style: { fontFamily: F.body, fontSize: 12, color: C.paper } }, "Ken Burns (zoom pelan)")))), /* @__PURE__ */ import_react3.default.createElement("div", { className: "flex items-center gap-3 flex-wrap" }, /* @__PURE__ */ import_react3.default.createElement(PrimaryButton, { onClick: () => exportTimeline(true), disabled: job !== null, icon: Play }, "Preview"), /* @__PURE__ */ import_react3.default.createElement(PrimaryButton, { onClick: () => exportTimeline(false), disabled: job !== null, icon: Clapperboard }, "Render Video"), result && /* @__PURE__ */ import_react3.default.createElement(PrimaryButton, { onClick: downloadVideo, icon: Download, variant: "outline" }, "Download .mp4")), (previewUrl || result) && /* @__PURE__ */ import_react3.default.createElement("div", { style: { borderRadius: 8, overflow: "hidden", background: "#000" } }, /* @__PURE__ */ import_react3.default.createElement("video", { ref: videoRef, src: previewUrl || result, controls: true, style: { width: "100%", maxHeight: 400, display: "block" }, onPlay: () => setPlaying(true), onPause: () => setPlaying(false) })), result && /* @__PURE__ */ import_react3.default.createElement("div", { className: "flex flex-col gap-3 px-4 py-3.5 rounded", style: { background: C.panel, border: `1px solid ${C.borderSoft}` } }, /* @__PURE__ */ import_react3.default.createElement("span", { style: { fontFamily: F.mono, fontSize: 10, color: C.amber, letterSpacing: "0.08em" } }, "THUMBNAIL YOUTUBE"), /* @__PURE__ */ import_react3.default.createElement("div", { className: "flex items-center gap-3 flex-wrap" }, /* @__PURE__ */ import_react3.default.createElement(
+    ))), error && /* @__PURE__ */ import_react3.default.createElement("div", { className: "flex items-center gap-2 px-4 py-3 rounded", style: { background: "#2A1712", border: `1px solid ${C.tallyDim}` } }, /* @__PURE__ */ import_react3.default.createElement(TriangleAlert, { size: 14, color: C.tally }), /* @__PURE__ */ import_react3.default.createElement("span", { style: { fontFamily: F.mono, fontSize: 11, color: C.paperDim } }, error)), job && /* @__PURE__ */ import_react3.default.createElement("div", { className: "flex items-center gap-3 px-4 py-3 rounded", style: { background: C.panel, border: `1px solid ${C.borderSoft}` } }, /* @__PURE__ */ import_react3.default.createElement(LoaderCircle, { size: 14, color: C.amber, className: "animate-spin" }), /* @__PURE__ */ import_react3.default.createElement("span", { style: { fontFamily: F.body, fontSize: 12, color: C.paperDim } }, job.message)), /* @__PURE__ */ import_react3.default.createElement("div", { className: "flex flex-col gap-3 px-4 py-3.5 rounded", style: { background: C.panel, border: `1px solid ${C.borderSoft}` } }, /* @__PURE__ */ import_react3.default.createElement("span", { style: { fontFamily: F.mono, fontSize: 10, color: C.amber, letterSpacing: "0.08em" } }, "FINISHING OPTIONS"), /* @__PURE__ */ import_react3.default.createElement("div", { className: "flex flex-wrap items-center gap-x-5 gap-y-3" }, /* @__PURE__ */ import_react3.default.createElement("label", { className: "flex items-center gap-2", style: { cursor: "pointer" } }, /* @__PURE__ */ import_react3.default.createElement("input", { type: "checkbox", checked: finishing.add_music, onChange: (e) => setFinishing({ ...finishing, add_music: e.target.checked }), style: { accentColor: C.tally } }), /* @__PURE__ */ import_react3.default.createElement("span", { style: { fontFamily: F.body, fontSize: 12, color: C.paper } }, "Tambah musik")), finishing.add_music && /* @__PURE__ */ import_react3.default.createElement("label", { className: "flex items-center gap-2" }, /* @__PURE__ */ import_react3.default.createElement("span", { style: { fontFamily: F.mono, fontSize: 10, color: C.paperFaint } }, "Mood"), /* @__PURE__ */ import_react3.default.createElement("select", { value: finishing.music_mood, onChange: (e) => setFinishing({ ...finishing, music_mood: e.target.value }), style: { fontFamily: F.mono, fontSize: 11, color: C.paper, background: C.panelRaised, border: `1px solid ${C.border}`, borderRadius: 3, padding: "3px 6px", outline: "none" } }, ["calm", "tense", "sad", "epic", "upbeat"].map((m) => /* @__PURE__ */ import_react3.default.createElement("option", { key: m, value: m }, m)))), /* @__PURE__ */ import_react3.default.createElement("label", { className: "flex items-center gap-2" }, /* @__PURE__ */ import_react3.default.createElement("span", { style: { fontFamily: F.mono, fontSize: 10, color: C.paperFaint } }, "Gaya caption"), /* @__PURE__ */ import_react3.default.createElement("select", { value: finishing.caption_style, onChange: (e) => setFinishing({ ...finishing, caption_style: e.target.value }), style: { fontFamily: F.mono, fontSize: 11, color: C.paper, background: C.panelRaised, border: `1px solid ${C.border}`, borderRadius: 3, padding: "3px 6px", outline: "none" } }, /* @__PURE__ */ import_react3.default.createElement("option", { value: "bold-white-bottom" }, "Bold White Bottom"), /* @__PURE__ */ import_react3.default.createElement("option", { value: "minimal-white-center" }, "Minimal White Center"), /* @__PURE__ */ import_react3.default.createElement("option", { value: "news-style-lower-third" }, "News Lower Third"))), /* @__PURE__ */ import_react3.default.createElement("label", { className: "flex items-center gap-2" }, /* @__PURE__ */ import_react3.default.createElement("span", { style: { fontFamily: F.mono, fontSize: 10, color: C.paperFaint } }, "Transisi"), /* @__PURE__ */ import_react3.default.createElement("select", { value: finishing.transition_style, onChange: (e) => setFinishing({ ...finishing, transition_style: e.target.value }), style: { fontFamily: F.mono, fontSize: 11, color: C.paper, background: C.panelRaised, border: `1px solid ${C.border}`, borderRadius: 3, padding: "3px 6px", outline: "none" } }, /* @__PURE__ */ import_react3.default.createElement("option", { value: "hard_cut" }, "Hard Cut"), /* @__PURE__ */ import_react3.default.createElement("option", { value: "crossfade" }, "Crossfade"))), /* @__PURE__ */ import_react3.default.createElement("label", { className: "flex items-center gap-2", style: { cursor: "pointer" } }, /* @__PURE__ */ import_react3.default.createElement("input", { type: "checkbox", checked: finishing.ken_burns, onChange: (e) => setFinishing({ ...finishing, ken_burns: e.target.checked }), style: { accentColor: C.tally } }), /* @__PURE__ */ import_react3.default.createElement("span", { style: { fontFamily: F.body, fontSize: 12, color: C.paper } }, "Ken Burns (zoom pelan)")), /* @__PURE__ */ import_react3.default.createElement("div", { className: "flex items-center gap-2 flex-wrap" }, /* @__PURE__ */ import_react3.default.createElement("span", { style: { fontFamily: F.mono, fontSize: 10, color: C.paperFaint } }, "Watermark"), finishing.watermark_name ? /* @__PURE__ */ import_react3.default.createElement(import_react3.default.Fragment, null, /* @__PURE__ */ import_react3.default.createElement("button", { onClick: () => wmRef.current?.click(), className: "px-2.5 py-1 rounded", style: { fontFamily: F.mono, fontSize: 11, color: C.cyan, background: C.panelRaised, border: `1px solid ${C.border}`, cursor: "pointer" } }, "\u{1F5BC} ", finishing.watermark_name), /* @__PURE__ */ import_react3.default.createElement("button", { onClick: () => setFinishing((f) => ({ ...f, watermark_path: "", watermark_name: "" })), className: "px-2 py-1 rounded", style: { fontFamily: F.mono, fontSize: 11, color: C.red, background: "none", border: "none", cursor: "pointer" } }, "\u2715")) : /* @__PURE__ */ import_react3.default.createElement("button", { onClick: () => wmRef.current?.click(), className: "px-2.5 py-1 rounded", style: { fontFamily: F.mono, fontSize: 11, color: C.paperDim, background: C.panelRaised, border: `1px solid ${C.border}`, cursor: "pointer" } }, "+ Logo"), /* @__PURE__ */ import_react3.default.createElement("input", { ref: wmRef, type: "file", accept: "image/*", style: { display: "none" }, onChange: onWatermarkFile }), /* @__PURE__ */ import_react3.default.createElement(
+      "select",
+      {
+        value: finishing.watermark_pos,
+        onChange: (e) => setFinishing({ ...finishing, watermark_pos: e.target.value }),
+        disabled: !finishing.watermark_path,
+        style: { fontFamily: F.mono, fontSize: 11, color: C.paper, background: C.panelRaised, border: `1px solid ${C.border}`, borderRadius: 3, padding: "3px 6px", outline: "none" }
+      },
+      /* @__PURE__ */ import_react3.default.createElement("option", { value: "bottom-right" }, "Bawah Kanan"),
+      /* @__PURE__ */ import_react3.default.createElement("option", { value: "bottom-left" }, "Bawah Kiri"),
+      /* @__PURE__ */ import_react3.default.createElement("option", { value: "top-right" }, "Atas Kanan"),
+      /* @__PURE__ */ import_react3.default.createElement("option", { value: "top-left" }, "Atas Kiri"),
+      /* @__PURE__ */ import_react3.default.createElement("option", { value: "center" }, "Tengah")
+    )))), /* @__PURE__ */ import_react3.default.createElement("div", { className: "flex items-center gap-3 flex-wrap" }, /* @__PURE__ */ import_react3.default.createElement(PrimaryButton, { onClick: () => exportTimeline(true), disabled: job !== null, icon: Play }, "Preview"), /* @__PURE__ */ import_react3.default.createElement(PrimaryButton, { onClick: () => exportTimeline(false), disabled: job !== null, icon: Clapperboard }, "Render Video"), result && /* @__PURE__ */ import_react3.default.createElement(PrimaryButton, { onClick: downloadVideo, icon: Download, variant: "outline" }, "Download .mp4")), (previewUrl || result) && /* @__PURE__ */ import_react3.default.createElement("div", { style: { borderRadius: 8, overflow: "hidden", background: "#000" } }, /* @__PURE__ */ import_react3.default.createElement("video", { ref: videoRef, src: previewUrl || result, controls: true, style: { width: "100%", maxHeight: 400, display: "block" }, onPlay: () => setPlaying(true), onPause: () => setPlaying(false) })), result && /* @__PURE__ */ import_react3.default.createElement("div", { className: "flex flex-col gap-3 px-4 py-3.5 rounded", style: { background: C.panel, border: `1px solid ${C.borderSoft}` } }, /* @__PURE__ */ import_react3.default.createElement("span", { style: { fontFamily: F.mono, fontSize: 10, color: C.amber, letterSpacing: "0.08em" } }, "THUMBNAIL YOUTUBE"), /* @__PURE__ */ import_react3.default.createElement("div", { className: "flex items-center gap-3 flex-wrap" }, /* @__PURE__ */ import_react3.default.createElement(
       "input",
       {
         value: thumbTitle,
@@ -24707,8 +24753,158 @@
     }))), clips.length > 0 && /* @__PURE__ */ import_react4.default.createElement("div", { className: "flex flex-col gap-3 rounded p-4", style: { background: C2.panel, border: `1px solid ${C2.borderSoft}` } }, /* @__PURE__ */ import_react4.default.createElement("span", { style: { fontFamily: F2.mono, fontSize: 10, color: C2.amber, letterSpacing: "0.08em" } }, "4 / FORMAT & RENDER"), /* @__PURE__ */ import_react4.default.createElement("div", { className: "flex items-center gap-3 flex-wrap" }, /* @__PURE__ */ import_react4.default.createElement("select", { value: aspect, onChange: (e) => setAspect(e.target.value), style: { fontFamily: F2.mono, fontSize: 11.5, color: C2.paper, background: C2.panelRaised, border: `1px solid ${C2.border}`, borderRadius: 6, padding: "8px 10px", outline: "none", cursor: "pointer" } }, ASPECTS.map((a) => /* @__PURE__ */ import_react4.default.createElement("option", { key: a.id, value: a.id }, a.label, " (", a.res, ")"))), /* @__PURE__ */ import_react4.default.createElement("button", { onClick: render, disabled: rendering || selectedCount === 0, className: "flex items-center gap-2 px-5 py-2.5 rounded", style: { background: rendering || selectedCount === 0 ? C2.panelRaised : C2.tally, color: C2.paper, fontFamily: F2.body, fontWeight: 700, fontSize: 13, border: "none", cursor: rendering || selectedCount === 0 ? "default" : "pointer", opacity: rendering || selectedCount === 0 ? 0.5 : 1 } }, rendering ? /* @__PURE__ */ import_react4.default.createElement(LoaderCircle, { size: 14, className: "animate-spin" }) : /* @__PURE__ */ import_react4.default.createElement(Clapperboard, { size: 14 }), " ", rendering ? "Merender\u2026" : `Render ${selectedCount} Clip (${fmt2(selDur)})`)), results && /* @__PURE__ */ import_react4.default.createElement("div", { className: "flex flex-col gap-2" }, /* @__PURE__ */ import_react4.default.createElement("span", { style: { fontFamily: F2.mono, fontSize: 11, color: C2.caption } }, "\u2713 ", results.files.length - 1, " clip siap \u2014 klik untuk unduh, atau ambil semuanya sekaligus:"), /* @__PURE__ */ import_react4.default.createElement("div", { className: "flex items-center gap-2 flex-wrap" }, results.files.map((f, i) => /* @__PURE__ */ import_react4.default.createElement("a", { key: i, href: f.url, download: true, style: { display: "flex", alignItems: "center", gap: 6, fontFamily: F2.mono, fontSize: 10.5, color: f.is_zip ? C2.amber : C2.paperDim, background: C2.panelRaised, border: `1px solid ${C2.borderSoft}`, borderRadius: 6, padding: "7px 10px", textDecoration: "none" } }, /* @__PURE__ */ import_react4.default.createElement(Download, { size: 12 }), " ", f.name))), /* @__PURE__ */ import_react4.default.createElement("span", { style: { fontFamily: F2.body, fontSize: 11, color: C2.paperFaint } }, "Tip: buka clip di editor video biar bisa tambah caption/teks sebelum upload."))), error && /* @__PURE__ */ import_react4.default.createElement("div", { className: "flex items-center gap-2 px-4 py-3 rounded", style: { background: "#2A1712", border: `1px solid ${C2.tallyDim}` } }, /* @__PURE__ */ import_react4.default.createElement(TriangleAlert, { size: 14, color: C2.tally }), /* @__PURE__ */ import_react4.default.createElement("span", { style: { fontFamily: F2.mono, fontSize: 11, color: C2.paperDim } }, error)), /* @__PURE__ */ import_react4.default.createElement("div", { className: "flex items-start gap-2 px-3.5 py-2.5 rounded", style: { background: C2.panel, border: `1px solid ${C2.borderSoft}` } }, /* @__PURE__ */ import_react4.default.createElement(Info, { size: 14, color: C2.amber, style: { marginTop: 1, flexShrink: 0 } }), /* @__PURE__ */ import_react4.default.createElement("span", { style: { fontFamily: F2.body, fontSize: 11.5, color: C2.paperDim, lineHeight: 1.5 } }, "Clipper memotong otomatis di titik scene change terdekat supaya gak motong di tengah adegan. Audio asli video tetap dipertahankan. Resolusi output 1080\xD71920 (vertical).")))));
   }
 
-  // src/App.jsx
+  // src/BatchRenderTool.jsx
+  var import_react5 = __toESM(require_react());
   var C3 = {
+    bg: "#15130F",
+    panel: "#1E1B15",
+    panelRaised: "#26221A",
+    border: "#3A3226",
+    borderSoft: "#2A251C",
+    tally: "#E8542E",
+    tallyDim: "#7A3324",
+    amber: "#E8A33D",
+    cyan: "#6FE7DD",
+    paper: "#F3EEE3",
+    paperDim: "#9C9384",
+    paperFaint: "#6B6355",
+    red: "#E8542E",
+    caption: "#7FB88A"
+  };
+  var F3 = {
+    display: "'''Archivo Expanded''', sans-serif",
+    body: "'''IBM Plex Sans''', sans-serif",
+    mono: "'''IBM Plex Mono''', monospace"
+  };
+  async function apiPostJSON3(path, body) {
+    const res = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    if (!res.ok) {
+      let msg = `${path}: HTTP ${res.status}`;
+      try {
+        const t = await res.json();
+        if (t.detail) msg = String(t.detail);
+      } catch {
+      }
+      throw new Error(msg);
+    }
+    return res.json();
+  }
+  function fmtDur(segs) {
+    const d = (segs || []).reduce((a, s) => a + Math.max((s.duration || 3) - (s.start_trim || 0) - (s.end_trim || 0), 0.5), 0);
+    const m = Math.floor(d / 60);
+    return `${m}m ${Math.round(d % 60)}s`;
+  }
+  function BatchRenderTool({ onClose }) {
+    const [items, setItems] = (0, import_react5.useState)([]);
+    const [jobId, setJobId] = (0, import_react5.useState)(null);
+    const [job, setJob] = (0, import_react5.useState)(null);
+    const [result, setResult] = (0, import_react5.useState)(null);
+    const [error, setError] = (0, import_react5.useState)(null);
+    const fileRef = (0, import_react5.useRef)(null);
+    const addFiles = async (fileList) => {
+      const files = Array.from(fileList || []);
+      const added = [];
+      for (const f of files) {
+        try {
+          const text = await f.text();
+          const data = JSON.parse(text);
+          if (!data?.segments?.length) throw new Error("tidak ada segmen");
+          const fin = data.finishing || {};
+          added.push({
+            name: (data.name || f.name.replace(/\.ritme\.json$/i, "")).slice(0, 60),
+            file: f.name,
+            body: {
+              name: (data.name || f.name.replace(/\.ritme\.json$/i, "")).slice(0, 60),
+              segments: data.segments,
+              narration_audio_path: data.narration?.audio_path || fin.narration_audio_path || "",
+              template_name: data.narrationMeta?.template_name || "",
+              add_music: !!fin.add_music,
+              music_mood: fin.music_mood || null,
+              caption_style: fin.caption_style || "minimal-white-center",
+              transition_style: fin.transition_style || "hard_cut",
+              ken_burns: !!fin.ken_burns,
+              watermark_path: fin.watermark_path || null,
+              watermark_pos: fin.watermark_pos || "bottom-right"
+            }
+          });
+        } catch (e) {
+          added.push({ name: f.name, file: f.name, error: `File tidak valid (${String(e)})` });
+        }
+      }
+      setItems((prev) => [...prev, ...added]);
+      setResult(null);
+      setError(null);
+    };
+    const removeItem = (i) => {
+      setItems((prev) => prev.filter((_, idx) => idx !== i));
+      setResult(null);
+    };
+    const runBatch = async () => {
+      const valid = items.filter((it) => !it.error);
+      if (!valid.length) {
+        setError("Tidak ada project valid untuk dirender.");
+        return;
+      }
+      setError(null);
+      setResult(null);
+      setJob({ progress: 1, message: "Memulai batch\u2026" });
+      try {
+        const data = await apiPostJSON3("/api/batch/render", { items: valid.map((it) => it.body) });
+        setJobId(data.job_id);
+      } catch (e) {
+        setJob(null);
+        setError(String(e));
+      }
+    };
+    (0, import_react5.useEffect)(() => {
+      if (!jobId) return;
+      let cancelled = false;
+      let timer = null;
+      const tick = async () => {
+        if (cancelled) return;
+        try {
+          const j = await (await fetch(`/api/jobs/${jobId}`)).json();
+          if (cancelled) return;
+          setJob({ progress: j.progress, message: j.message });
+          if (j.status === "done") {
+            setJob(null);
+            setResult(j.result);
+          } else if (j.status === "error") {
+            setJob(null);
+            setError(j.error || "Batch gagal");
+          } else timer = setTimeout(tick, 900);
+        } catch (e) {
+          if (!cancelled) {
+            setJob(null);
+            setError(String(e));
+          }
+        }
+      };
+      tick();
+      return () => {
+        cancelled = true;
+        if (timer) clearTimeout(timer);
+      };
+    }, [jobId]);
+    const okCount = result ? result.items.filter((i) => i.status === "ok").length : 0;
+    return /* @__PURE__ */ import_react5.default.createElement("div", { className: "fixed inset-0 z-50 overflow-y-auto", style: { background: "rgba(10,8,5,0.88)", backdropFilter: "blur(4px)" } }, /* @__PURE__ */ import_react5.default.createElement("div", { className: "max-w-3xl mx-auto px-4 sm:px-6 py-6" }, /* @__PURE__ */ import_react5.default.createElement("div", { className: "flex flex-col gap-5", style: { background: C3.bg, border: `1px solid ${C3.border}`, borderRadius: 12, padding: 24, boxShadow: "0 20px 60px rgba(0,0,0,0.6)" } }, /* @__PURE__ */ import_react5.default.createElement("div", { className: "flex items-start justify-between gap-4" }, /* @__PURE__ */ import_react5.default.createElement("div", null, /* @__PURE__ */ import_react5.default.createElement("span", { style: { fontFamily: F3.mono, fontSize: 12, color: C3.cyan, letterSpacing: "0.08em" } }, "BATCH RENDER"), /* @__PURE__ */ import_react5.default.createElement("h2", { style: { fontFamily: F3.display, fontSize: 22, color: C3.paper, fontWeight: 700, marginTop: 4 } }, "Render Banyak Project Sekaligus"), /* @__PURE__ */ import_react5.default.createElement("p", { style: { fontFamily: F3.body, fontSize: 13, color: C3.paperDim, marginTop: 4 } }, "Upload file project (.ritme.json) dari Save Project, render semua berurutan. Maksimal 10 project per batch.")), /* @__PURE__ */ import_react5.default.createElement("button", { onClick: onClose, className: "flex items-center justify-center rounded", style: { width: 32, height: 32, background: C3.panel, border: `1px solid ${C3.borderSoft}`, color: C3.paperDim, cursor: "pointer" } }, /* @__PURE__ */ import_react5.default.createElement(X, { size: 16 }))), /* @__PURE__ */ import_react5.default.createElement("div", { className: "flex items-center gap-3" }, /* @__PURE__ */ import_react5.default.createElement("button", { onClick: () => fileRef.current?.click(), className: "flex items-center gap-2 px-4 py-2.5 rounded", style: { background: C3.tally, color: C3.paper, fontFamily: F3.body, fontWeight: 600, fontSize: 12.5, border: "none", cursor: "pointer" } }, /* @__PURE__ */ import_react5.default.createElement(Upload, { size: 14 }), " Tambah Project (.ritme.json)"), /* @__PURE__ */ import_react5.default.createElement(
+      "input",
+      {
+        ref: fileRef,
+        type: "file",
+        accept: ".ritme.json,.json",
+        multiple: true,
+        style: { display: "none" },
+        onChange: (e) => {
+          addFiles(e.target.files);
+          e.target.value = "";
+        }
+      }
+    ), items.length > 0 && /* @__PURE__ */ import_react5.default.createElement("span", { style: { fontFamily: F3.mono, fontSize: 11, color: C3.paperFaint } }, items.length, " project")), items.length > 0 && /* @__PURE__ */ import_react5.default.createElement("div", { className: "flex flex-col gap-2" }, items.map((it, i) => /* @__PURE__ */ import_react5.default.createElement("div", { key: i, className: "flex items-center gap-3 px-4 py-2.5 rounded", style: { background: C3.panel, border: `1px solid ${it.error ? C3.tallyDim : C3.borderSoft}` } }, /* @__PURE__ */ import_react5.default.createElement(Layers, { size: 14, color: it.error ? C3.red : C3.cyan, style: { flexShrink: 0 } }), /* @__PURE__ */ import_react5.default.createElement("div", { style: { flex: 1, minWidth: 0 } }, /* @__PURE__ */ import_react5.default.createElement("div", { style: { fontFamily: F3.body, fontSize: 12.5, color: it.error ? C3.red : C3.paper, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, it.name, " ", it.error && /* @__PURE__ */ import_react5.default.createElement("span", { style: { color: C3.red } }, "\u2014 ", it.error)), !it.error && /* @__PURE__ */ import_react5.default.createElement("div", { style: { fontFamily: F3.mono, fontSize: 10, color: C3.paperFaint } }, it.file, " \xB7 ", it.body.segments.length, " segmen \xB7 ", fmtDur(it.body.segments))), /* @__PURE__ */ import_react5.default.createElement("button", { onClick: () => removeItem(i), className: "flex items-center justify-center rounded", style: { width: 26, height: 26, background: "none", border: "none", color: C3.paperFaint, cursor: "pointer" } }, /* @__PURE__ */ import_react5.default.createElement(Trash2, { size: 13 }))))), error && /* @__PURE__ */ import_react5.default.createElement("div", { className: "flex items-center gap-2 px-4 py-3 rounded", style: { background: "#2A1712", border: `1px solid ${C3.tallyDim}` } }, /* @__PURE__ */ import_react5.default.createElement(TriangleAlert, { size: 14, color: C3.tally }), /* @__PURE__ */ import_react5.default.createElement("span", { style: { fontFamily: F3.mono, fontSize: 11, color: C3.paperDim } }, error)), job && /* @__PURE__ */ import_react5.default.createElement("div", { className: "flex flex-col gap-2" }, /* @__PURE__ */ import_react5.default.createElement("div", { className: "flex items-center gap-2", style: { fontFamily: F3.mono, fontSize: 11.5, color: C3.amber } }, /* @__PURE__ */ import_react5.default.createElement(LoaderCircle, { size: 14, className: "animate-spin" }), " ", job.message), /* @__PURE__ */ import_react5.default.createElement("div", { style: { height: 6, borderRadius: 3, background: C3.panelRaised, overflow: "hidden" } }, /* @__PURE__ */ import_react5.default.createElement("div", { style: { height: "100%", width: `${job.progress || 0}%`, background: C3.tally, transition: "width 0.4s" } }))), !job && items.filter((it) => !it.error).length > 0 && /* @__PURE__ */ import_react5.default.createElement("button", { onClick: runBatch, className: "flex items-center justify-center gap-2 px-5 py-3 rounded", style: { background: C3.cyan, color: C3.bg, fontFamily: F3.body, fontWeight: 700, fontSize: 13.5, border: "none", cursor: "pointer" } }, /* @__PURE__ */ import_react5.default.createElement(Play, { size: 14 }), " Render ", items.filter((it) => !it.error).length, " Project"), result && /* @__PURE__ */ import_react5.default.createElement("div", { className: "flex flex-col gap-2" }, /* @__PURE__ */ import_react5.default.createElement("div", { className: "flex items-center gap-2", style: { fontFamily: F3.mono, fontSize: 11.5, color: C3.caption } }, /* @__PURE__ */ import_react5.default.createElement(Check, { size: 14 }), " Batch selesai \u2014 ", okCount, "/", result.items.length, " berhasil"), result.items.map((r, i) => /* @__PURE__ */ import_react5.default.createElement("div", { key: i, className: "flex items-center gap-3 px-4 py-2.5 rounded", style: { background: C3.panel, border: `1px solid ${r.status === "ok" ? C3.caption : C3.tallyDim}` } }, /* @__PURE__ */ import_react5.default.createElement("span", { style: { fontFamily: F3.mono, fontSize: 10.5, color: r.status === "ok" ? C3.caption : C3.red, width: 64, flexShrink: 0 } }, r.status.toUpperCase()), /* @__PURE__ */ import_react5.default.createElement("span", { style: { fontFamily: F3.body, fontSize: 12.5, color: C3.paper, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, r.name), r.status === "ok" ? /* @__PURE__ */ import_react5.default.createElement("a", { href: r.url, download: true, style: { display: "flex", alignItems: "center", gap: 6, fontFamily: F3.mono, fontSize: 11, color: C3.amber, textDecoration: "none", background: C3.panelRaised, border: `1px solid ${C3.borderSoft}`, borderRadius: 6, padding: "6px 10px" } }, /* @__PURE__ */ import_react5.default.createElement(Download, { size: 12 }), " ", r.name, ".mp4") : /* @__PURE__ */ import_react5.default.createElement("span", { style: { fontFamily: F3.mono, fontSize: 10, color: C3.red, maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, r.error)))))));
+  }
+
+  // src/App.jsx
+  var C4 = {
     bg: "#15130F",
     panel: "#1E1B15",
     panelRaised: "#26221A",
@@ -24723,14 +24919,14 @@
     paperFaint: "#6B6355",
     red: "#E8542E"
   };
-  var F3 = {
+  var F4 = {
     display: "'Archivo Expanded', sans-serif",
     body: "'IBM Plex Sans', sans-serif",
     mono: "'IBM Plex Mono', monospace"
   };
   var FONT_IMPORT = `@import url('https://fonts.googleapis.com/css2?family=Archivo+Expanded:wght@600;700;800&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');`;
   function useStickyState(defaultValue, key) {
-    const [value, setValue] = (0, import_react5.useState)(() => {
+    const [value, setValue] = (0, import_react6.useState)(() => {
       try {
         const stickyValue = window.localStorage.getItem(key);
         return stickyValue !== null ? JSON.parse(stickyValue) : defaultValue;
@@ -24738,7 +24934,7 @@
         return defaultValue;
       }
     });
-    (0, import_react5.useEffect)(() => {
+    (0, import_react6.useEffect)(() => {
       try {
         if (value === null) {
           window.localStorage.removeItem(key);
@@ -24751,10 +24947,10 @@
     return [value, setValue];
   }
   var SOURCE_STYLES = {
-    PEXELS: C3.cyan,
-    PIXABAY: C3.amber,
-    WIKIMEDIA: C3.tally,
-    "ARCHIVE.ORG": C3.paperDim,
+    PEXELS: C4.cyan,
+    PIXABAY: C4.amber,
+    WIKIMEDIA: C4.tally,
+    "ARCHIVE.ORG": C4.paperDim,
     YOUTUBE_CC: "#7FB88A"
   };
   var ACT_LABELS = {
@@ -24769,7 +24965,7 @@
     const sec = (s % 60).toFixed(1).padStart(4, "0");
     return `${m}:${sec}`;
   }
-  async function apiPostJSON3(path, body) {
+  async function apiPostJSON4(path, body) {
     const res = await fetch(path, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -24813,22 +25009,22 @@
     };
   }
   function Eyebrow({ n, children }) {
-    return /* @__PURE__ */ import_react5.default.createElement("div", { className: "flex items-baseline gap-2 mb-1" }, /* @__PURE__ */ import_react5.default.createElement("span", { style: { fontFamily: F3.mono, fontSize: 12, color: C3.tally, letterSpacing: "0.08em" } }, String(n).padStart(2, "0"), " /"), /* @__PURE__ */ import_react5.default.createElement("span", { style: { fontFamily: F3.mono, fontSize: 12, color: C3.paperDim, letterSpacing: "0.12em" } }, children));
+    return /* @__PURE__ */ import_react6.default.createElement("div", { className: "flex items-baseline gap-2 mb-1" }, /* @__PURE__ */ import_react6.default.createElement("span", { style: { fontFamily: F4.mono, fontSize: 12, color: C4.tally, letterSpacing: "0.08em" } }, String(n).padStart(2, "0"), " /"), /* @__PURE__ */ import_react6.default.createElement("span", { style: { fontFamily: F4.mono, fontSize: 12, color: C4.paperDim, letterSpacing: "0.12em" } }, children));
   }
   function StatCell({ label, value, unit }) {
-    return /* @__PURE__ */ import_react5.default.createElement("div", { className: "flex flex-col gap-0.5" }, /* @__PURE__ */ import_react5.default.createElement("span", { style: { fontFamily: F3.mono, fontSize: 20, color: C3.cyan, fontWeight: 600, lineHeight: 1 } }, value, unit && /* @__PURE__ */ import_react5.default.createElement("span", { style: { fontSize: 12, color: C3.paperDim, marginLeft: 2 } }, unit)), /* @__PURE__ */ import_react5.default.createElement("span", { style: { fontFamily: F3.mono, fontSize: 10, color: C3.paperFaint, letterSpacing: "0.08em" } }, label));
+    return /* @__PURE__ */ import_react6.default.createElement("div", { className: "flex flex-col gap-0.5" }, /* @__PURE__ */ import_react6.default.createElement("span", { style: { fontFamily: F4.mono, fontSize: 20, color: C4.cyan, fontWeight: 600, lineHeight: 1 } }, value, unit && /* @__PURE__ */ import_react6.default.createElement("span", { style: { fontSize: 12, color: C4.paperDim, marginLeft: 2 } }, unit)), /* @__PURE__ */ import_react6.default.createElement("span", { style: { fontFamily: F4.mono, fontSize: 10, color: C4.paperFaint, letterSpacing: "0.08em" } }, label));
   }
   function PrimaryButton2({ children, onClick, icon: Icon2, disabled, loading }) {
-    return /* @__PURE__ */ import_react5.default.createElement(
+    return /* @__PURE__ */ import_react6.default.createElement(
       "button",
       {
         onClick,
         disabled: disabled || loading,
         className: "flex items-center gap-2 px-5 py-2.5 rounded",
         style: {
-          background: disabled || loading ? C3.panelRaised : C3.tally,
-          color: disabled || loading ? C3.paperFaint : C3.paper,
-          fontFamily: F3.body,
+          background: disabled || loading ? C4.panelRaised : C4.tally,
+          color: disabled || loading ? C4.paperFaint : C4.paper,
+          fontFamily: F4.body,
           fontWeight: 600,
           fontSize: 13.5,
           border: "none",
@@ -24836,16 +25032,16 @@
           opacity: disabled ? 0.6 : 1
         }
       },
-      loading && /* @__PURE__ */ import_react5.default.createElement(LoaderCircle, { size: 15, className: "animate-spin" }),
+      loading && /* @__PURE__ */ import_react6.default.createElement(LoaderCircle, { size: 15, className: "animate-spin" }),
       children,
-      !loading && Icon2 && /* @__PURE__ */ import_react5.default.createElement(Icon2, { size: 15 })
+      !loading && Icon2 && /* @__PURE__ */ import_react6.default.createElement(Icon2, { size: 15 })
     );
   }
   function ProgressBar({ progress, message }) {
-    return /* @__PURE__ */ import_react5.default.createElement("div", { className: "flex items-center gap-3 px-4 py-3 rounded", style: { background: C3.panel, border: `1px solid ${C3.borderSoft}` } }, /* @__PURE__ */ import_react5.default.createElement(LoaderCircle, { size: 15, color: C3.amber, className: "animate-spin", style: { flexShrink: 0 } }), /* @__PURE__ */ import_react5.default.createElement("div", { className: "flex-1 flex flex-col gap-1.5" }, /* @__PURE__ */ import_react5.default.createElement("span", { style: { fontFamily: F3.body, fontSize: 12, color: C3.paperDim } }, message || "Memproses\u2026"), /* @__PURE__ */ import_react5.default.createElement("div", { className: "rounded-full overflow-hidden", style: { height: 4, background: C3.border } }, /* @__PURE__ */ import_react5.default.createElement("div", { style: { width: `${Math.max(progress, 4)}%`, height: "100%", background: C3.amber, transition: "width 200ms ease" } }))), /* @__PURE__ */ import_react5.default.createElement("span", { style: { fontFamily: F3.mono, fontSize: 11, color: C3.amber, width: 32, textAlign: "right" } }, Math.round(progress), "%"));
+    return /* @__PURE__ */ import_react6.default.createElement("div", { className: "flex items-center gap-3 px-4 py-3 rounded", style: { background: C4.panel, border: `1px solid ${C4.borderSoft}` } }, /* @__PURE__ */ import_react6.default.createElement(LoaderCircle, { size: 15, color: C4.amber, className: "animate-spin", style: { flexShrink: 0 } }), /* @__PURE__ */ import_react6.default.createElement("div", { className: "flex-1 flex flex-col gap-1.5" }, /* @__PURE__ */ import_react6.default.createElement("span", { style: { fontFamily: F4.body, fontSize: 12, color: C4.paperDim } }, message || "Memproses\u2026"), /* @__PURE__ */ import_react6.default.createElement("div", { className: "rounded-full overflow-hidden", style: { height: 4, background: C4.border } }, /* @__PURE__ */ import_react6.default.createElement("div", { style: { width: `${Math.max(progress, 4)}%`, height: "100%", background: C4.amber, transition: "width 200ms ease" } }))), /* @__PURE__ */ import_react6.default.createElement("span", { style: { fontFamily: F4.mono, fontSize: 11, color: C4.amber, width: 32, textAlign: "right" } }, Math.round(progress), "%"));
   }
   function ErrorBanner({ error, onRetry }) {
-    return /* @__PURE__ */ import_react5.default.createElement("div", { className: "flex items-start gap-2.5 px-4 py-3 rounded", style: { background: "#2A1712", border: `1px solid ${C3.tallyDim}` } }, /* @__PURE__ */ import_react5.default.createElement(TriangleAlert, { size: 15, color: C3.tally, style: { marginTop: 1, flexShrink: 0 } }), /* @__PURE__ */ import_react5.default.createElement("div", { className: "flex-1 flex flex-col gap-1.5" }, /* @__PURE__ */ import_react5.default.createElement("span", { style: { fontFamily: F3.body, fontSize: 12.5, color: C3.paper, fontWeight: 600 } }, "Gagal"), /* @__PURE__ */ import_react5.default.createElement("span", { style: { fontFamily: F3.mono, fontSize: 11, color: C3.paperDim, wordBreak: "break-word" } }, error)), onRetry && /* @__PURE__ */ import_react5.default.createElement("button", { onClick: onRetry, className: "flex-shrink-0", style: { fontFamily: F3.body, fontSize: 11.5, color: C3.cyan, background: "none", border: "none", cursor: "pointer" } }, "Coba lagi"));
+    return /* @__PURE__ */ import_react6.default.createElement("div", { className: "flex items-start gap-2.5 px-4 py-3 rounded", style: { background: "#2A1712", border: `1px solid ${C4.tallyDim}` } }, /* @__PURE__ */ import_react6.default.createElement(TriangleAlert, { size: 15, color: C4.tally, style: { marginTop: 1, flexShrink: 0 } }), /* @__PURE__ */ import_react6.default.createElement("div", { className: "flex-1 flex flex-col gap-1.5" }, /* @__PURE__ */ import_react6.default.createElement("span", { style: { fontFamily: F4.body, fontSize: 12.5, color: C4.paper, fontWeight: 600 } }, "Gagal"), /* @__PURE__ */ import_react6.default.createElement("span", { style: { fontFamily: F4.mono, fontSize: 11, color: C4.paperDim, wordBreak: "break-word" } }, error)), onRetry && /* @__PURE__ */ import_react6.default.createElement("button", { onClick: onRetry, className: "flex-shrink-0", style: { fontFamily: F4.body, fontSize: 11.5, color: C4.cyan, background: "none", border: "none", cursor: "pointer" } }, "Coba lagi"));
   }
   var STAGES = [
     { id: 1, label: "TEMPLATE", icon: Film },
@@ -24855,12 +25051,12 @@
     { id: 5, label: "TIMELINE", icon: Clapperboard }
   ];
   function StageNav({ active, setActive, maxUnlocked }) {
-    return /* @__PURE__ */ import_react5.default.createElement("div", { className: "w-full overflow-x-auto", style: { borderBottom: `1px solid ${C3.border}` } }, /* @__PURE__ */ import_react5.default.createElement("div", { className: "flex items-stretch min-w-max relative px-4 sm:px-6", style: { height: 64 } }, /* @__PURE__ */ import_react5.default.createElement("div", { className: "absolute left-0 right-0", style: { top: 32, height: 1, background: C3.border, marginLeft: 24, marginRight: 24 } }), STAGES.map((s) => {
+    return /* @__PURE__ */ import_react6.default.createElement("div", { className: "w-full overflow-x-auto", style: { borderBottom: `1px solid ${C4.border}` } }, /* @__PURE__ */ import_react6.default.createElement("div", { className: "flex items-stretch min-w-max relative px-4 sm:px-6", style: { height: 64 } }, /* @__PURE__ */ import_react6.default.createElement("div", { className: "absolute left-0 right-0", style: { top: 32, height: 1, background: C4.border, marginLeft: 24, marginRight: 24 } }), STAGES.map((s) => {
       const isActive = s.id === active;
       const isDone = s.id < maxUnlocked;
       const isLocked = s.id > maxUnlocked;
       const Icon2 = s.icon;
-      return /* @__PURE__ */ import_react5.default.createElement(
+      return /* @__PURE__ */ import_react6.default.createElement(
         "button",
         {
           key: s.id,
@@ -24869,35 +25065,35 @@
           className: "flex flex-col items-center justify-center gap-1.5 relative px-4 sm:px-6",
           style: { cursor: isLocked ? "default" : "pointer", background: "none", border: "none" }
         },
-        /* @__PURE__ */ import_react5.default.createElement(
+        /* @__PURE__ */ import_react6.default.createElement(
           "div",
           {
             className: "flex items-center justify-center rounded-full relative",
             style: {
               width: 30,
               height: 30,
-              background: isActive ? C3.tally : isDone ? C3.panelRaised : C3.panel,
-              border: `1.5px solid ${isActive ? C3.tally : isDone ? C3.cyan : C3.border}`,
-              boxShadow: isActive ? `0 0 0 3px ${C3.tallyDim}` : "none",
+              background: isActive ? C4.tally : isDone ? C4.panelRaised : C4.panel,
+              border: `1.5px solid ${isActive ? C4.tally : isDone ? C4.cyan : C4.border}`,
+              boxShadow: isActive ? `0 0 0 3px ${C4.tallyDim}` : "none",
               zIndex: 1
             }
           },
-          isDone ? /* @__PURE__ */ import_react5.default.createElement(Check, { size: 14, color: C3.cyan, strokeWidth: 2.5 }) : isLocked ? /* @__PURE__ */ import_react5.default.createElement(Lock, { size: 12, color: C3.paperFaint }) : /* @__PURE__ */ import_react5.default.createElement(Icon2, { size: 14, color: isActive ? C3.paper : C3.paperDim })
+          isDone ? /* @__PURE__ */ import_react6.default.createElement(Check, { size: 14, color: C4.cyan, strokeWidth: 2.5 }) : isLocked ? /* @__PURE__ */ import_react6.default.createElement(Lock, { size: 12, color: C4.paperFaint }) : /* @__PURE__ */ import_react6.default.createElement(Icon2, { size: 14, color: isActive ? C4.paper : C4.paperDim })
         ),
-        /* @__PURE__ */ import_react5.default.createElement("span", { style: { fontFamily: F3.mono, fontSize: 10, letterSpacing: "0.06em", color: isActive ? C3.paper : isLocked ? C3.paperFaint : C3.paperDim, fontWeight: isActive ? 600 : 400 } }, String(s.id).padStart(2, "0"), " ", s.label)
+        /* @__PURE__ */ import_react6.default.createElement("span", { style: { fontFamily: F4.mono, fontSize: 10, letterSpacing: "0.06em", color: isActive ? C4.paper : isLocked ? C4.paperFaint : C4.paperDim, fontWeight: isActive ? 600 : 400 } }, String(s.id).padStart(2, "0"), " ", s.label)
       );
     })));
   }
   function StageTemplate({ template, setTemplate, onNext }) {
-    const [file, setFile] = (0, import_react5.useState)(null);
-    const [name, setName] = (0, import_react5.useState)("my_style");
-    const [job, setJob] = (0, import_react5.useState)(null);
-    const [error, setError] = (0, import_react5.useState)(null);
-    const [hovered, setHovered] = (0, import_react5.useState)(null);
-    const [savedTemplates, setSavedTemplates] = (0, import_react5.useState)([]);
-    const cancelRef = (0, import_react5.useRef)(null);
-    (0, import_react5.useEffect)(() => () => cancelRef.current && cancelRef.current(), []);
-    (0, import_react5.useEffect)(() => {
+    const [file, setFile] = (0, import_react6.useState)(null);
+    const [name, setName] = (0, import_react6.useState)("my_style");
+    const [job, setJob] = (0, import_react6.useState)(null);
+    const [error, setError] = (0, import_react6.useState)(null);
+    const [hovered, setHovered] = (0, import_react6.useState)(null);
+    const [savedTemplates, setSavedTemplates] = (0, import_react6.useState)([]);
+    const cancelRef = (0, import_react6.useRef)(null);
+    (0, import_react6.useEffect)(() => () => cancelRef.current && cancelRef.current(), []);
+    (0, import_react6.useEffect)(() => {
       apiGet("/api/templates").then(setSavedTemplates).catch(() => setSavedTemplates([]));
     }, []);
     const runExtract = async () => {
@@ -24927,12 +25123,12 @@
       }
     };
     const sprocket = {
-      backgroundImage: `radial-gradient(circle, ${C3.bg} 2.2px, transparent 2.6px)`,
+      backgroundImage: `radial-gradient(circle, ${C4.bg} 2.2px, transparent 2.6px)`,
       backgroundSize: "18px 100%",
       backgroundPosition: "9px center",
       backgroundRepeat: "repeat-x",
       height: 10,
-      background: C3.panelRaised
+      background: C4.panelRaised
     };
     let cumulative = [];
     if (template) {
@@ -24943,61 +25139,61 @@
       });
       cumulative.push(acc);
     }
-    return /* @__PURE__ */ import_react5.default.createElement("div", { className: "flex flex-col gap-6" }, /* @__PURE__ */ import_react5.default.createElement("div", null, /* @__PURE__ */ import_react5.default.createElement(Eyebrow, { n: 1 }, "TEMPLATE STUDIO"), /* @__PURE__ */ import_react5.default.createElement("h2", { style: { fontFamily: F3.display, fontSize: 22, color: C3.paper, fontWeight: 700 } }, "Pelajari Ritme Video Referensi"), /* @__PURE__ */ import_react5.default.createElement("p", { style: { fontFamily: F3.body, fontSize: 13, color: C3.paperDim, marginTop: 4, maxWidth: 520 } }, "Upload video referensi \u2014 tiap potongan dipetakan jadi data pacing beneran (scene detection + Whisper), dipakai lagi buat nentuin ritme video baru.")), !template && /* @__PURE__ */ import_react5.default.createElement("div", { className: "flex flex-col gap-5" }, savedTemplates.length > 0 && /* @__PURE__ */ import_react5.default.createElement("div", null, /* @__PURE__ */ import_react5.default.createElement("span", { style: { fontFamily: F3.mono, fontSize: 10, color: C3.paperFaint, letterSpacing: "0.08em" } }, "PILIH TEMPLATE YANG SUDAH ADA"), /* @__PURE__ */ import_react5.default.createElement("div", { className: "grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2" }, savedTemplates.map((t) => /* @__PURE__ */ import_react5.default.createElement(
+    return /* @__PURE__ */ import_react6.default.createElement("div", { className: "flex flex-col gap-6" }, /* @__PURE__ */ import_react6.default.createElement("div", null, /* @__PURE__ */ import_react6.default.createElement(Eyebrow, { n: 1 }, "TEMPLATE STUDIO"), /* @__PURE__ */ import_react6.default.createElement("h2", { style: { fontFamily: F4.display, fontSize: 22, color: C4.paper, fontWeight: 700 } }, "Pelajari Ritme Video Referensi"), /* @__PURE__ */ import_react6.default.createElement("p", { style: { fontFamily: F4.body, fontSize: 13, color: C4.paperDim, marginTop: 4, maxWidth: 520 } }, "Upload video referensi \u2014 tiap potongan dipetakan jadi data pacing beneran (scene detection + Whisper), dipakai lagi buat nentuin ritme video baru.")), !template && /* @__PURE__ */ import_react6.default.createElement("div", { className: "flex flex-col gap-5" }, savedTemplates.length > 0 && /* @__PURE__ */ import_react6.default.createElement("div", null, /* @__PURE__ */ import_react6.default.createElement("span", { style: { fontFamily: F4.mono, fontSize: 10, color: C4.paperFaint, letterSpacing: "0.08em" } }, "PILIH TEMPLATE YANG SUDAH ADA"), /* @__PURE__ */ import_react6.default.createElement("div", { className: "grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2" }, savedTemplates.map((t) => /* @__PURE__ */ import_react6.default.createElement(
       "button",
       {
         key: t.template_name,
         onClick: () => setTemplate(t),
         className: "flex items-center gap-2 px-3 py-3 rounded text-left",
-        style: { background: C3.panelRaised, border: `1px solid ${C3.borderSoft}`, color: C3.paper, cursor: "pointer" }
+        style: { background: C4.panelRaised, border: `1px solid ${C4.borderSoft}`, color: C4.paper, cursor: "pointer" }
       },
-      /* @__PURE__ */ import_react5.default.createElement(Film, { size: 15, color: C3.cyan }),
-      /* @__PURE__ */ import_react5.default.createElement("span", { style: { fontFamily: F3.mono, fontSize: 12.5 } }, t.template_name),
-      /* @__PURE__ */ import_react5.default.createElement("span", { style: { fontFamily: F3.mono, fontSize: 10, color: C3.paperDim, marginLeft: "auto" } }, t.pacing?.shot_count || 0, " shots")
-    )))), /* @__PURE__ */ import_react5.default.createElement("div", { style: { borderTop: `1px dashed ${C3.borderSoft}`, paddingTop: 16 } }, /* @__PURE__ */ import_react5.default.createElement("span", { style: { fontFamily: F3.mono, fontSize: 10, color: C3.paperFaint, letterSpacing: "0.08em", display: "block", marginBottom: 8 } }, savedTemplates.length > 0 ? "ATAU BUAT TEMPLATE BARU" : "BUAT TEMPLATE BARU"), /* @__PURE__ */ import_react5.default.createElement("div", { className: "flex flex-col gap-3" }, /* @__PURE__ */ import_react5.default.createElement(
+      /* @__PURE__ */ import_react6.default.createElement(Film, { size: 15, color: C4.cyan }),
+      /* @__PURE__ */ import_react6.default.createElement("span", { style: { fontFamily: F4.mono, fontSize: 12.5 } }, t.template_name),
+      /* @__PURE__ */ import_react6.default.createElement("span", { style: { fontFamily: F4.mono, fontSize: 10, color: C4.paperDim, marginLeft: "auto" } }, t.pacing?.shot_count || 0, " shots")
+    )))), /* @__PURE__ */ import_react6.default.createElement("div", { style: { borderTop: `1px dashed ${C4.borderSoft}`, paddingTop: 16 } }, /* @__PURE__ */ import_react6.default.createElement("span", { style: { fontFamily: F4.mono, fontSize: 10, color: C4.paperFaint, letterSpacing: "0.08em", display: "block", marginBottom: 8 } }, savedTemplates.length > 0 ? "ATAU BUAT TEMPLATE BARU" : "BUAT TEMPLATE BARU"), /* @__PURE__ */ import_react6.default.createElement("div", { className: "flex flex-col gap-3" }, /* @__PURE__ */ import_react6.default.createElement(
       "label",
       {
         className: "flex flex-col items-center justify-center gap-2 px-4 py-8 rounded cursor-pointer",
-        style: { background: C3.panel, border: `1.5px dashed ${file ? C3.cyan : C3.borderSoft}` }
+        style: { background: C4.panel, border: `1.5px dashed ${file ? C4.cyan : C4.borderSoft}` }
       },
-      /* @__PURE__ */ import_react5.default.createElement(Upload, { size: 20, color: file ? C3.cyan : C3.paperDim }),
-      /* @__PURE__ */ import_react5.default.createElement("span", { style: { fontFamily: F3.body, fontSize: 12.5, color: file ? C3.paper : C3.paperDim } }, file ? file.name : "Pilih file video referensi"),
-      /* @__PURE__ */ import_react5.default.createElement("input", { type: "file", accept: "video/*", className: "hidden", onChange: (e) => setFile(e.target.files[0] || null) })
-    ), /* @__PURE__ */ import_react5.default.createElement("div", { className: "flex items-center gap-2" }, /* @__PURE__ */ import_react5.default.createElement("span", { style: { fontFamily: F3.mono, fontSize: 10, color: C3.paperFaint, letterSpacing: "0.08em", flexShrink: 0 } }, "NAMA TEMPLATE"), /* @__PURE__ */ import_react5.default.createElement(
+      /* @__PURE__ */ import_react6.default.createElement(Upload, { size: 20, color: file ? C4.cyan : C4.paperDim }),
+      /* @__PURE__ */ import_react6.default.createElement("span", { style: { fontFamily: F4.body, fontSize: 12.5, color: file ? C4.paper : C4.paperDim } }, file ? file.name : "Pilih file video referensi"),
+      /* @__PURE__ */ import_react6.default.createElement("input", { type: "file", accept: "video/*", className: "hidden", onChange: (e) => setFile(e.target.files[0] || null) })
+    ), /* @__PURE__ */ import_react6.default.createElement("div", { className: "flex items-center gap-2" }, /* @__PURE__ */ import_react6.default.createElement("span", { style: { fontFamily: F4.mono, fontSize: 10, color: C4.paperFaint, letterSpacing: "0.08em", flexShrink: 0 } }, "NAMA TEMPLATE"), /* @__PURE__ */ import_react6.default.createElement(
       "input",
       {
         value: name,
         onChange: (e) => setName(e.target.value),
         className: "flex-1 px-3 py-2 rounded",
-        style: { fontFamily: F3.mono, fontSize: 12.5, color: C3.paper, background: C3.panel, border: `1px solid ${C3.borderSoft}`, outline: "none" }
+        style: { fontFamily: F4.mono, fontSize: 12.5, color: C4.paper, background: C4.panel, border: `1px solid ${C4.borderSoft}`, outline: "none" }
       }
-    )), error && /* @__PURE__ */ import_react5.default.createElement(ErrorBanner, { error, onRetry: runExtract }), job && /* @__PURE__ */ import_react5.default.createElement(ProgressBar, { progress: job.progress, message: job.message }), !job && /* @__PURE__ */ import_react5.default.createElement(PrimaryButton2, { onClick: runExtract, disabled: !file, icon: ScanSearch }, "Ekstrak Template")))), template && /* @__PURE__ */ import_react5.default.createElement(import_react5.default.Fragment, null, /* @__PURE__ */ import_react5.default.createElement("div", { className: "flex items-center justify-between px-4 py-3 rounded", style: { background: C3.panel, border: `1px solid ${C3.borderSoft}` } }, /* @__PURE__ */ import_react5.default.createElement("div", { className: "flex items-center gap-2" }, /* @__PURE__ */ import_react5.default.createElement(Film, { size: 15, color: C3.paperDim }), /* @__PURE__ */ import_react5.default.createElement("span", { style: { fontFamily: F3.mono, fontSize: 12.5, color: C3.paper } }, template.template_name)), /* @__PURE__ */ import_react5.default.createElement("button", { onClick: () => setTemplate(null), style: { fontFamily: F3.body, fontSize: 12, color: C3.cyan, background: "none", border: "none", cursor: "pointer" } }, "Ganti video")), /* @__PURE__ */ import_react5.default.createElement("div", null, /* @__PURE__ */ import_react5.default.createElement("div", { style: sprocket, className: "rounded-t" }), /* @__PURE__ */ import_react5.default.createElement("div", { className: "flex", style: { height: 88, gap: 2 } }, template.shots.map((shot, i) => /* @__PURE__ */ import_react5.default.createElement(
+    )), error && /* @__PURE__ */ import_react6.default.createElement(ErrorBanner, { error, onRetry: runExtract }), job && /* @__PURE__ */ import_react6.default.createElement(ProgressBar, { progress: job.progress, message: job.message }), !job && /* @__PURE__ */ import_react6.default.createElement(PrimaryButton2, { onClick: runExtract, disabled: !file, icon: ScanSearch }, "Ekstrak Template")))), template && /* @__PURE__ */ import_react6.default.createElement(import_react6.default.Fragment, null, /* @__PURE__ */ import_react6.default.createElement("div", { className: "flex items-center justify-between px-4 py-3 rounded", style: { background: C4.panel, border: `1px solid ${C4.borderSoft}` } }, /* @__PURE__ */ import_react6.default.createElement("div", { className: "flex items-center gap-2" }, /* @__PURE__ */ import_react6.default.createElement(Film, { size: 15, color: C4.paperDim }), /* @__PURE__ */ import_react6.default.createElement("span", { style: { fontFamily: F4.mono, fontSize: 12.5, color: C4.paper } }, template.template_name)), /* @__PURE__ */ import_react6.default.createElement("button", { onClick: () => setTemplate(null), style: { fontFamily: F4.body, fontSize: 12, color: C4.cyan, background: "none", border: "none", cursor: "pointer" } }, "Ganti video")), /* @__PURE__ */ import_react6.default.createElement("div", null, /* @__PURE__ */ import_react6.default.createElement("div", { style: sprocket, className: "rounded-t" }), /* @__PURE__ */ import_react6.default.createElement("div", { className: "flex", style: { height: 88, gap: 2 } }, template.shots.map((shot, i) => /* @__PURE__ */ import_react6.default.createElement(
       "div",
       {
         key: i,
         onMouseEnter: () => setHovered(i),
         onMouseLeave: () => setHovered(null),
         className: "flex items-center justify-center relative",
-        style: { flexGrow: shot.duration, flexBasis: 0, background: hovered === i ? C3.panelRaised : C3.panel, border: `1px solid ${hovered === i ? C3.cyan : C3.borderSoft}`, cursor: "pointer", transition: "background 120ms ease" }
+        style: { flexGrow: shot.duration, flexBasis: 0, background: hovered === i ? C4.panelRaised : C4.panel, border: `1px solid ${hovered === i ? C4.cyan : C4.borderSoft}`, cursor: "pointer", transition: "background 120ms ease" }
       },
-      /* @__PURE__ */ import_react5.default.createElement("span", { style: { fontFamily: F3.mono, fontSize: 12, color: hovered === i ? C3.cyan : C3.paperDim } }, shot.duration.toFixed(1), "s")
-    ))), /* @__PURE__ */ import_react5.default.createElement("div", { style: sprocket, className: "rounded-b" }), /* @__PURE__ */ import_react5.default.createElement("div", { className: "flex justify-between mt-1.5 px-0.5" }, cumulative.map((t, i) => /* @__PURE__ */ import_react5.default.createElement("span", { key: i, style: { fontFamily: F3.mono, fontSize: 10, color: C3.paperFaint } }, fmtTime(t))))), /* @__PURE__ */ import_react5.default.createElement("div", { className: "grid grid-cols-2 sm:grid-cols-5 gap-4 px-4 py-4 rounded", style: { background: C3.panel, border: `1px solid ${C3.borderSoft}` } }, /* @__PURE__ */ import_react5.default.createElement(StatCell, { label: "AVG SHOT", value: template.pacing.avg_shot_duration.toFixed(1), unit: "s" }), /* @__PURE__ */ import_react5.default.createElement(StatCell, { label: "MEDIAN", value: template.pacing.median_shot_duration.toFixed(1), unit: "s" }), /* @__PURE__ */ import_react5.default.createElement(StatCell, { label: "MIN / MAX", value: `${template.pacing.min_shot_duration}\u2013${template.pacing.max_shot_duration}`, unit: "s" }), /* @__PURE__ */ import_react5.default.createElement(StatCell, { label: "TOTAL SHOT", value: template.pacing.shot_count }), /* @__PURE__ */ import_react5.default.createElement(StatCell, { label: "NARASI WPM", value: template.narration ? template.narration.words_per_minute : "\u2014" })), /* @__PURE__ */ import_react5.default.createElement("div", { className: "flex justify-end" }, /* @__PURE__ */ import_react5.default.createElement(PrimaryButton2, { onClick: onNext, icon: ChevronRight }, "Lanjut ke Skrip"))));
+      /* @__PURE__ */ import_react6.default.createElement("span", { style: { fontFamily: F4.mono, fontSize: 12, color: hovered === i ? C4.cyan : C4.paperDim } }, shot.duration.toFixed(1), "s")
+    ))), /* @__PURE__ */ import_react6.default.createElement("div", { style: sprocket, className: "rounded-b" }), /* @__PURE__ */ import_react6.default.createElement("div", { className: "flex justify-between mt-1.5 px-0.5" }, cumulative.map((t, i) => /* @__PURE__ */ import_react6.default.createElement("span", { key: i, style: { fontFamily: F4.mono, fontSize: 10, color: C4.paperFaint } }, fmtTime(t))))), /* @__PURE__ */ import_react6.default.createElement("div", { className: "grid grid-cols-2 sm:grid-cols-5 gap-4 px-4 py-4 rounded", style: { background: C4.panel, border: `1px solid ${C4.borderSoft}` } }, /* @__PURE__ */ import_react6.default.createElement(StatCell, { label: "AVG SHOT", value: template.pacing.avg_shot_duration.toFixed(1), unit: "s" }), /* @__PURE__ */ import_react6.default.createElement(StatCell, { label: "MEDIAN", value: template.pacing.median_shot_duration.toFixed(1), unit: "s" }), /* @__PURE__ */ import_react6.default.createElement(StatCell, { label: "MIN / MAX", value: `${template.pacing.min_shot_duration}\u2013${template.pacing.max_shot_duration}`, unit: "s" }), /* @__PURE__ */ import_react6.default.createElement(StatCell, { label: "TOTAL SHOT", value: template.pacing.shot_count }), /* @__PURE__ */ import_react6.default.createElement(StatCell, { label: "NARASI WPM", value: template.narration ? template.narration.words_per_minute : "\u2014" })), /* @__PURE__ */ import_react6.default.createElement("div", { className: "flex justify-end" }, /* @__PURE__ */ import_react6.default.createElement(PrimaryButton2, { onClick: onNext, icon: ChevronRight }, "Lanjut ke Skrip"))));
   }
   function StageScript({ template, script, setScript, onNext, onScriptJob }) {
-    const [mode, setMode] = (0, import_react5.useState)("ai");
-    const [topic, setTopic] = (0, import_react5.useState)("");
-    const [customScript, setCustomScript] = (0, import_react5.useState)("");
-    const [numSegments, setNumSegments] = (0, import_react5.useState)(6);
-    const [styles, setStyles] = (0, import_react5.useState)([]);
-    const [styleId, setStyleId] = (0, import_react5.useState)(null);
-    const [language, setLanguage] = (0, import_react5.useState)("id");
-    const [footageMode, setFootageMode] = (0, import_react5.useState)("none");
-    const [footageFile, setFootageFile] = (0, import_react5.useState)(null);
-    const [footageYoutubeUrl, setFootageYoutubeUrl] = (0, import_react5.useState)("");
-    const [footageExtraction, setFootageExtraction] = (0, import_react5.useState)(null);
-    const [job, setJob] = (0, import_react5.useState)(null);
-    const [error, setError] = (0, import_react5.useState)(null);
-    const cancelRef = (0, import_react5.useRef)(null);
+    const [mode, setMode] = (0, import_react6.useState)("ai");
+    const [topic, setTopic] = (0, import_react6.useState)("");
+    const [customScript, setCustomScript] = (0, import_react6.useState)("");
+    const [numSegments, setNumSegments] = (0, import_react6.useState)(6);
+    const [styles, setStyles] = (0, import_react6.useState)([]);
+    const [styleId, setStyleId] = (0, import_react6.useState)(null);
+    const [language, setLanguage] = (0, import_react6.useState)("id");
+    const [footageMode, setFootageMode] = (0, import_react6.useState)("none");
+    const [footageFile, setFootageFile] = (0, import_react6.useState)(null);
+    const [footageYoutubeUrl, setFootageYoutubeUrl] = (0, import_react6.useState)("");
+    const [footageExtraction, setFootageExtraction] = (0, import_react6.useState)(null);
+    const [job, setJob] = (0, import_react6.useState)(null);
+    const [error, setError] = (0, import_react6.useState)(null);
+    const cancelRef = (0, import_react6.useRef)(null);
     const downloadScriptText = () => {
       if (!script) return;
       let text = `TOPIK: ${(topic || "Naskah Kustom").toUpperCase()}
@@ -25024,8 +25220,8 @@ BABAK: ${actLabel}
       a.click();
       URL.revokeObjectURL(url);
     };
-    (0, import_react5.useEffect)(() => () => cancelRef.current && cancelRef.current(), []);
-    (0, import_react5.useEffect)(() => {
+    (0, import_react6.useEffect)(() => () => cancelRef.current && cancelRef.current(), []);
+    (0, import_react6.useEffect)(() => {
       apiGet("/api/script/styles").then(setStyles).catch(() => setStyles([]));
     }, []);
     const runGenerate = async () => {
@@ -25058,7 +25254,7 @@ BABAK: ${actLabel}
           if (footageMode === "youtube" && footageYoutubeUrl.trim()) {
             body.footage_youtube_url = footageYoutubeUrl.trim();
           }
-          const res = await apiPostJSON3("/api/script/generate", body);
+          const res = await apiPostJSON4("/api/script/generate", body);
           jobId = res.job_id;
         }
         if (onScriptJob) onScriptJob(jobId);
@@ -25092,7 +25288,7 @@ BABAK: ${actLabel}
       };
       setScript(next);
     };
-    return /* @__PURE__ */ import_react5.default.createElement("div", { className: "flex flex-col gap-6" }, /* @__PURE__ */ import_react5.default.createElement("div", null, /* @__PURE__ */ import_react5.default.createElement(Eyebrow, { n: 2 }, "SCRIPT DESK"), /* @__PURE__ */ import_react5.default.createElement("h2", { style: { fontFamily: F3.display, fontSize: 22, color: C3.paper, fontWeight: 700 } }, "Riset & Tulis Naskah")), !script && /* @__PURE__ */ import_react5.default.createElement("div", { className: "flex flex-col gap-3" }, /* @__PURE__ */ import_react5.default.createElement("div", { className: "flex gap-2 mb-2" }, /* @__PURE__ */ import_react5.default.createElement(
+    return /* @__PURE__ */ import_react6.default.createElement("div", { className: "flex flex-col gap-6" }, /* @__PURE__ */ import_react6.default.createElement("div", null, /* @__PURE__ */ import_react6.default.createElement(Eyebrow, { n: 2 }, "SCRIPT DESK"), /* @__PURE__ */ import_react6.default.createElement("h2", { style: { fontFamily: F4.display, fontSize: 22, color: C4.paper, fontWeight: 700 } }, "Riset & Tulis Naskah")), !script && /* @__PURE__ */ import_react6.default.createElement("div", { className: "flex flex-col gap-3" }, /* @__PURE__ */ import_react6.default.createElement("div", { className: "flex gap-2 mb-2" }, /* @__PURE__ */ import_react6.default.createElement(
       "button",
       {
         onClick: () => {
@@ -25100,29 +25296,29 @@ BABAK: ${actLabel}
           setCustomScript("");
         },
         className: "px-4 py-2.5 rounded font-semibold text-sm cursor-pointer",
-        style: { background: mode === "ai" ? C3.tally : C3.panel, color: mode === "ai" ? C3.paper : C3.paperDim, border: `1px solid ${mode === "ai" ? C3.tally : C3.borderSoft}` }
+        style: { background: mode === "ai" ? C4.tally : C4.panel, color: mode === "ai" ? C4.paper : C4.paperDim, border: `1px solid ${mode === "ai" ? C4.tally : C4.borderSoft}` }
       },
       "AI Generate (Otomatis)"
-    ), /* @__PURE__ */ import_react5.default.createElement(
+    ), /* @__PURE__ */ import_react6.default.createElement(
       "button",
       {
         onClick: () => {
           setMode("custom");
         },
         className: "px-4 py-2.5 rounded font-semibold text-sm cursor-pointer",
-        style: { background: mode === "custom" ? C3.tally : C3.panel, color: mode === "custom" ? C3.paper : C3.paperDim, border: `1px solid ${mode === "custom" ? C3.tally : C3.borderSoft}` }
+        style: { background: mode === "custom" ? C4.tally : C4.panel, color: mode === "custom" ? C4.paper : C4.paperDim, border: `1px solid ${mode === "custom" ? C4.tally : C4.borderSoft}` }
       },
       "Naskah Buatan Sendiri (Custom)"
-    )), /* @__PURE__ */ import_react5.default.createElement("div", null, /* @__PURE__ */ import_react5.default.createElement("label", { style: { fontFamily: F3.mono, fontSize: 10, color: C3.paperFaint, letterSpacing: "0.08em" } }, mode === "ai" ? "TOPIK" : "JUDUL PROYEK / VIDEO"), /* @__PURE__ */ import_react5.default.createElement(
+    )), /* @__PURE__ */ import_react6.default.createElement("div", null, /* @__PURE__ */ import_react6.default.createElement("label", { style: { fontFamily: F4.mono, fontSize: 10, color: C4.paperFaint, letterSpacing: "0.08em" } }, mode === "ai" ? "TOPIK" : "JUDUL PROYEK / VIDEO"), /* @__PURE__ */ import_react6.default.createElement(
       "input",
       {
         value: topic,
         onChange: (e) => setTopic(e.target.value),
         placeholder: mode === "ai" ? "mis. Energi Terbarukan di Indonesia" : "mis. Investigasi Mangkok Merah",
         className: "w-full mt-1.5 px-4 py-3 rounded",
-        style: { fontFamily: F3.body, fontSize: 14.5, color: C3.paper, background: C3.panel, border: `1px solid ${C3.borderSoft}`, outline: "none" }
+        style: { fontFamily: F4.body, fontSize: 14.5, color: C4.paper, background: C4.panel, border: `1px solid ${C4.borderSoft}`, outline: "none" }
       }
-    )), mode === "custom" && /* @__PURE__ */ import_react5.default.createElement("div", null, /* @__PURE__ */ import_react5.default.createElement("label", { style: { fontFamily: F3.mono, fontSize: 10, color: C3.paperFaint, letterSpacing: "0.08em" } }, "TEKS NASKAH"), /* @__PURE__ */ import_react5.default.createElement(
+    )), mode === "custom" && /* @__PURE__ */ import_react6.default.createElement("div", null, /* @__PURE__ */ import_react6.default.createElement("label", { style: { fontFamily: F4.mono, fontSize: 10, color: C4.paperFaint, letterSpacing: "0.08em" } }, "TEKS NASKAH"), /* @__PURE__ */ import_react6.default.createElement(
       "textarea",
       {
         value: customScript,
@@ -25130,9 +25326,9 @@ BABAK: ${actLabel}
         placeholder: "Paste teks naskah lo di sini...",
         rows: 6,
         className: "w-full mt-1.5 px-4 py-3 rounded resize-y",
-        style: { fontFamily: F3.body, fontSize: 13.5, color: C3.paper, background: C3.panel, border: `1px solid ${C3.borderSoft}`, outline: "none", minHeight: "120px" }
+        style: { fontFamily: F4.body, fontSize: 13.5, color: C4.paper, background: C4.panel, border: `1px solid ${C4.borderSoft}`, outline: "none", minHeight: "120px" }
       }
-    )), /* @__PURE__ */ import_react5.default.createElement("div", { className: "flex items-center gap-2 mt-1" }, mode === "ai" && /* @__PURE__ */ import_react5.default.createElement(import_react5.default.Fragment, null, /* @__PURE__ */ import_react5.default.createElement("span", { style: { fontFamily: F3.mono, fontSize: 10, color: C3.paperFaint, letterSpacing: "0.08em" } }, "JUMLAH SEGMEN"), /* @__PURE__ */ import_react5.default.createElement("div", { className: "flex items-center gap-2" }, /* @__PURE__ */ import_react5.default.createElement(
+    )), /* @__PURE__ */ import_react6.default.createElement("div", { className: "flex items-center gap-2 mt-1" }, mode === "ai" && /* @__PURE__ */ import_react6.default.createElement(import_react6.default.Fragment, null, /* @__PURE__ */ import_react6.default.createElement("span", { style: { fontFamily: F4.mono, fontSize: 10, color: C4.paperFaint, letterSpacing: "0.08em" } }, "JUMLAH SEGMEN"), /* @__PURE__ */ import_react6.default.createElement("div", { className: "flex items-center gap-2" }, /* @__PURE__ */ import_react6.default.createElement(
       "input",
       {
         type: "number",
@@ -25141,45 +25337,45 @@ BABAK: ${actLabel}
         value: numSegments,
         onChange: (e) => setNumSegments(e.target.value),
         className: "px-3 py-1.5 rounded",
-        style: { width: 64, fontFamily: F3.mono, fontSize: 12.5, color: C3.paper, background: C3.panel, border: `1px solid ${C3.borderSoft}`, outline: "none" }
+        style: { width: 64, fontFamily: F4.mono, fontSize: 12.5, color: C4.paper, background: C4.panel, border: `1px solid ${C4.borderSoft}`, outline: "none" }
       }
-    ), /* @__PURE__ */ import_react5.default.createElement("span", { style: { fontFamily: F3.body, fontSize: 11, color: C3.paperDim, fontStyle: "italic" } }, "(1 segmen = 100 kata)"))), /* @__PURE__ */ import_react5.default.createElement("span", { style: { fontFamily: F3.mono, fontSize: 10, color: C3.paperFaint, letterSpacing: "0.08em", marginLeft: mode === "ai" ? 16 : 0 } }, "BAHASA"), /* @__PURE__ */ import_react5.default.createElement(
+    ), /* @__PURE__ */ import_react6.default.createElement("span", { style: { fontFamily: F4.body, fontSize: 11, color: C4.paperDim, fontStyle: "italic" } }, "(1 segmen = 100 kata)"))), /* @__PURE__ */ import_react6.default.createElement("span", { style: { fontFamily: F4.mono, fontSize: 10, color: C4.paperFaint, letterSpacing: "0.08em", marginLeft: mode === "ai" ? 16 : 0 } }, "BAHASA"), /* @__PURE__ */ import_react6.default.createElement(
       "select",
       {
         value: language,
         onChange: (e) => setLanguage(e.target.value),
         className: "px-3 py-1.5 rounded",
-        style: { fontFamily: F3.mono, fontSize: 12.5, color: C3.paper, background: C3.panel, border: `1px solid ${C3.borderSoft}`, outline: "none" }
+        style: { fontFamily: F4.mono, fontSize: 12.5, color: C4.paper, background: C4.panel, border: `1px solid ${C4.borderSoft}`, outline: "none" }
       },
-      /* @__PURE__ */ import_react5.default.createElement("option", { value: "id" }, "Indonesia"),
-      /* @__PURE__ */ import_react5.default.createElement("option", { value: "en-US" }, "English")
-    )), mode === "ai" && styles.length > 0 && /* @__PURE__ */ import_react5.default.createElement("div", { className: "mt-1" }, /* @__PURE__ */ import_react5.default.createElement("span", { style: { fontFamily: F3.mono, fontSize: 10, color: C3.paperFaint, letterSpacing: "0.08em" } }, "GAYA NASKAH"), /* @__PURE__ */ import_react5.default.createElement("div", { className: "flex flex-wrap gap-2 mt-1.5" }, /* @__PURE__ */ import_react5.default.createElement(
+      /* @__PURE__ */ import_react6.default.createElement("option", { value: "id" }, "Indonesia"),
+      /* @__PURE__ */ import_react6.default.createElement("option", { value: "en-US" }, "English")
+    )), mode === "ai" && styles.length > 0 && /* @__PURE__ */ import_react6.default.createElement("div", { className: "mt-1" }, /* @__PURE__ */ import_react6.default.createElement("span", { style: { fontFamily: F4.mono, fontSize: 10, color: C4.paperFaint, letterSpacing: "0.08em" } }, "GAYA NASKAH"), /* @__PURE__ */ import_react6.default.createElement("div", { className: "flex flex-wrap gap-2 mt-1.5" }, /* @__PURE__ */ import_react6.default.createElement(
       "button",
       {
         onClick: () => setStyleId(null),
         className: "px-3.5 py-2 rounded text-left",
-        style: { fontFamily: F3.body, fontSize: 12, cursor: "pointer", background: styleId === null ? C3.tally : C3.panel, color: styleId === null ? C3.paper : C3.paperDim, border: `1px solid ${styleId === null ? C3.tally : C3.borderSoft}` }
+        style: { fontFamily: F4.body, fontSize: 12, cursor: "pointer", background: styleId === null ? C4.tally : C4.panel, color: styleId === null ? C4.paper : C4.paperDim, border: `1px solid ${styleId === null ? C4.tally : C4.borderSoft}` }
       },
       "Default"
-    ), styles.map((s) => /* @__PURE__ */ import_react5.default.createElement(
+    ), styles.map((s) => /* @__PURE__ */ import_react6.default.createElement(
       "button",
       {
         key: s.style_id,
         onClick: () => setStyleId(s.style_id),
         className: "px-3.5 py-2 rounded text-left",
-        style: { maxWidth: 220, fontFamily: F3.body, fontSize: 12, cursor: "pointer", background: styleId === s.style_id ? C3.tally : C3.panel, color: styleId === s.style_id ? C3.paper : C3.paperDim, border: `1px solid ${styleId === s.style_id ? C3.tally : C3.borderSoft}` }
+        style: { maxWidth: 220, fontFamily: F4.body, fontSize: 12, cursor: "pointer", background: styleId === s.style_id ? C4.tally : C4.panel, color: styleId === s.style_id ? C4.paper : C4.paperDim, border: `1px solid ${styleId === s.style_id ? C4.tally : C4.borderSoft}` }
       },
       s.display_name
-    ))), styleId && /* @__PURE__ */ import_react5.default.createElement("p", { style: { fontFamily: F3.body, fontSize: 11.5, color: C3.paperFaint, marginTop: 6, lineHeight: 1.5 } }, styles.find((s) => s.style_id === styleId)?.description)), /* @__PURE__ */ import_react5.default.createElement("div", { className: "flex flex-col gap-1.5 mt-1" }, /* @__PURE__ */ import_react5.default.createElement("span", { style: { fontFamily: F3.mono, fontSize: 10, color: C3.paperFaint, letterSpacing: "0.08em" } }, "FOOTAGE SUMBER (OPSIONAL)"), /* @__PURE__ */ import_react5.default.createElement("div", { className: "flex gap-2 p-1 rounded", style: { background: C3.panel } }, [["none", "Tanpa"], ["file", "File Lokal"], ["youtube", "Link YouTube"]].map(([m, label]) => /* @__PURE__ */ import_react5.default.createElement(
+    ))), styleId && /* @__PURE__ */ import_react6.default.createElement("p", { style: { fontFamily: F4.body, fontSize: 11.5, color: C4.paperFaint, marginTop: 6, lineHeight: 1.5 } }, styles.find((s) => s.style_id === styleId)?.description)), /* @__PURE__ */ import_react6.default.createElement("div", { className: "flex flex-col gap-1.5 mt-1" }, /* @__PURE__ */ import_react6.default.createElement("span", { style: { fontFamily: F4.mono, fontSize: 10, color: C4.paperFaint, letterSpacing: "0.08em" } }, "FOOTAGE SUMBER (OPSIONAL)"), /* @__PURE__ */ import_react6.default.createElement("div", { className: "flex gap-2 p-1 rounded", style: { background: C4.panel } }, [["none", "Tanpa"], ["file", "File Lokal"], ["youtube", "Link YouTube"]].map(([m, label]) => /* @__PURE__ */ import_react6.default.createElement(
       "button",
       {
         key: m,
         onClick: () => setFootageMode(m),
         className: "flex-1 py-1.5 rounded",
-        style: { border: "none", cursor: "pointer", background: footageMode === m ? C3.borderSoft : "transparent", color: footageMode === m ? C3.paper : C3.paperDim, fontSize: 12, fontWeight: 600 }
+        style: { border: "none", cursor: "pointer", background: footageMode === m ? C4.borderSoft : "transparent", color: footageMode === m ? C4.paper : C4.paperDim, fontSize: 12, fontWeight: 600 }
       },
       label
-    ))), footageMode === "file" && /* @__PURE__ */ import_react5.default.createElement("div", { className: "flex items-center gap-3 relative mt-1" }, /* @__PURE__ */ import_react5.default.createElement("input", { type: "file", accept: "video/mp4,video/webm,video/mov", onChange: (e) => e.target.files && setFootageFile(e.target.files[0]), className: "absolute inset-0 opacity-0 cursor-pointer" }), /* @__PURE__ */ import_react5.default.createElement("div", { className: "flex-1 px-3 py-2 rounded flex items-center justify-between", style: { background: C3.panel, border: `1px dashed ${C3.borderSoft}` } }, /* @__PURE__ */ import_react5.default.createElement("span", { style: { fontFamily: F3.mono, fontSize: 11, color: footageFile ? C3.cyan : C3.paperDim, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } }, footageFile ? footageFile.name : "Pilih video panjang (.mp4)\u2026"), /* @__PURE__ */ import_react5.default.createElement(Upload, { size: 14, color: footageFile ? C3.cyan : C3.paperDim }))), footageMode === "youtube" && /* @__PURE__ */ import_react5.default.createElement("input", { type: "text", placeholder: "https://www.youtube.com/watch?v=...", value: footageYoutubeUrl, onChange: (e) => setFootageYoutubeUrl(e.target.value), className: "w-full px-3 py-2 rounded mt-1", style: { background: C3.panel, border: `1px solid ${C3.borderSoft}`, color: C3.paper, fontSize: 13 } }), footageMode !== "none" && /* @__PURE__ */ import_react5.default.createElement("p", { style: { fontFamily: F3.body, fontSize: 11, color: C3.paperFaint, lineHeight: 1.5, marginTop: 2 } }, "Footage diproses (dipotong + auto-tag) paralel dengan riset & penulisan naskah \u2014 jadi pas sampai tahap Footage, klip lokal udah siap dipakai."), footageExtraction && footageExtraction.status === "running" && /* @__PURE__ */ import_react5.default.createElement("div", { className: "mt-1.5 px-3 py-2 rounded", style: { background: C3.panel, border: `1px solid ${C3.borderSoft}` } }, /* @__PURE__ */ import_react5.default.createElement("div", { style: { fontFamily: F3.mono, fontSize: 10.5, color: C3.cyan, marginBottom: 4 } }, "\u2702\uFE0F EKSTRAKSI FOOTAGE: ", footageExtraction.message || "berjalan..."), /* @__PURE__ */ import_react5.default.createElement("div", { style: { width: "100%", height: 3, background: C3.borderSoft, borderRadius: 2, overflow: "hidden" } }, /* @__PURE__ */ import_react5.default.createElement("div", { style: { width: `${footageExtraction.progress || 0}%`, height: "100%", background: C3.cyan, borderRadius: 2, transition: "width 0.4s" } }))), footageExtraction && footageExtraction.status === "error" && /* @__PURE__ */ import_react5.default.createElement("p", { style: { fontFamily: F3.body, fontSize: 11, color: C3.red, marginTop: 2 } }, "\u26A0\uFE0F Ekstraksi footage gagal: ", footageExtraction.message, " \u2014 video tetap bisa dibuat pakai footage internet.")), error && /* @__PURE__ */ import_react5.default.createElement(ErrorBanner, { error, onRetry: runGenerate }), job && /* @__PURE__ */ import_react5.default.createElement(ProgressBar, { progress: job.progress, message: job.message }), !job && /* @__PURE__ */ import_react5.default.createElement(
+    ))), footageMode === "file" && /* @__PURE__ */ import_react6.default.createElement("div", { className: "flex items-center gap-3 relative mt-1" }, /* @__PURE__ */ import_react6.default.createElement("input", { type: "file", accept: "video/mp4,video/webm,video/mov", onChange: (e) => e.target.files && setFootageFile(e.target.files[0]), className: "absolute inset-0 opacity-0 cursor-pointer" }), /* @__PURE__ */ import_react6.default.createElement("div", { className: "flex-1 px-3 py-2 rounded flex items-center justify-between", style: { background: C4.panel, border: `1px dashed ${C4.borderSoft}` } }, /* @__PURE__ */ import_react6.default.createElement("span", { style: { fontFamily: F4.mono, fontSize: 11, color: footageFile ? C4.cyan : C4.paperDim, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } }, footageFile ? footageFile.name : "Pilih video panjang (.mp4)\u2026"), /* @__PURE__ */ import_react6.default.createElement(Upload, { size: 14, color: footageFile ? C4.cyan : C4.paperDim }))), footageMode === "youtube" && /* @__PURE__ */ import_react6.default.createElement("input", { type: "text", placeholder: "https://www.youtube.com/watch?v=...", value: footageYoutubeUrl, onChange: (e) => setFootageYoutubeUrl(e.target.value), className: "w-full px-3 py-2 rounded mt-1", style: { background: C4.panel, border: `1px solid ${C4.borderSoft}`, color: C4.paper, fontSize: 13 } }), footageMode !== "none" && /* @__PURE__ */ import_react6.default.createElement("p", { style: { fontFamily: F4.body, fontSize: 11, color: C4.paperFaint, lineHeight: 1.5, marginTop: 2 } }, "Footage diproses (dipotong + auto-tag) paralel dengan riset & penulisan naskah \u2014 jadi pas sampai tahap Footage, klip lokal udah siap dipakai."), footageExtraction && footageExtraction.status === "running" && /* @__PURE__ */ import_react6.default.createElement("div", { className: "mt-1.5 px-3 py-2 rounded", style: { background: C4.panel, border: `1px solid ${C4.borderSoft}` } }, /* @__PURE__ */ import_react6.default.createElement("div", { style: { fontFamily: F4.mono, fontSize: 10.5, color: C4.cyan, marginBottom: 4 } }, "\u2702\uFE0F EKSTRAKSI FOOTAGE: ", footageExtraction.message || "berjalan..."), /* @__PURE__ */ import_react6.default.createElement("div", { style: { width: "100%", height: 3, background: C4.borderSoft, borderRadius: 2, overflow: "hidden" } }, /* @__PURE__ */ import_react6.default.createElement("div", { style: { width: `${footageExtraction.progress || 0}%`, height: "100%", background: C4.cyan, borderRadius: 2, transition: "width 0.4s" } }))), footageExtraction && footageExtraction.status === "error" && /* @__PURE__ */ import_react6.default.createElement("p", { style: { fontFamily: F4.body, fontSize: 11, color: C4.red, marginTop: 2 } }, "\u26A0\uFE0F Ekstraksi footage gagal: ", footageExtraction.message, " \u2014 video tetap bisa dibuat pakai footage internet.")), error && /* @__PURE__ */ import_react6.default.createElement(ErrorBanner, { error, onRetry: runGenerate }), job && /* @__PURE__ */ import_react6.default.createElement(ProgressBar, { progress: job.progress, message: job.message }), !job && /* @__PURE__ */ import_react6.default.createElement(
       PrimaryButton2,
       {
         onClick: runGenerate,
@@ -25187,21 +25383,21 @@ BABAK: ${actLabel}
         icon: FileText
       },
       "Generate Skrip"
-    )), script && /* @__PURE__ */ import_react5.default.createElement(import_react5.default.Fragment, null, /* @__PURE__ */ import_react5.default.createElement("div", { className: "flex flex-col lg:flex-row gap-5" }, /* @__PURE__ */ import_react5.default.createElement("div", { className: "lg:w-64 flex-shrink-0" }, /* @__PURE__ */ import_react5.default.createElement("div", { style: { fontFamily: F3.mono, fontSize: 10, color: C3.paperFaint, letterSpacing: "0.08em", marginBottom: 8 } }, "SUMBER RISET \xB7 ", script.sources?.length || 0), /* @__PURE__ */ import_react5.default.createElement("div", { className: "flex flex-col gap-2" }, (script.sources || []).map((s, i) => /* @__PURE__ */ import_react5.default.createElement("div", { key: i, className: "px-3 py-2.5 rounded", style: { background: C3.panel, border: `1px solid ${C3.borderSoft}` } }, /* @__PURE__ */ import_react5.default.createElement("div", { style: { fontFamily: F3.body, fontSize: 12.5, color: C3.paper, marginBottom: 3 } }, s.title), /* @__PURE__ */ import_react5.default.createElement("div", { style: { fontFamily: F3.mono, fontSize: 10.5, color: C3.cyan } }, s.url ? new URL(s.url).hostname : s.domain))))), /* @__PURE__ */ import_react5.default.createElement("div", { className: "flex-1 flex flex-col gap-3" }, script.segments.map((seg, i) => {
+    )), script && /* @__PURE__ */ import_react6.default.createElement(import_react6.default.Fragment, null, /* @__PURE__ */ import_react6.default.createElement("div", { className: "flex flex-col lg:flex-row gap-5" }, /* @__PURE__ */ import_react6.default.createElement("div", { className: "lg:w-64 flex-shrink-0" }, /* @__PURE__ */ import_react6.default.createElement("div", { style: { fontFamily: F4.mono, fontSize: 10, color: C4.paperFaint, letterSpacing: "0.08em", marginBottom: 8 } }, "SUMBER RISET \xB7 ", script.sources?.length || 0), /* @__PURE__ */ import_react6.default.createElement("div", { className: "flex flex-col gap-2" }, (script.sources || []).map((s, i) => /* @__PURE__ */ import_react6.default.createElement("div", { key: i, className: "px-3 py-2.5 rounded", style: { background: C4.panel, border: `1px solid ${C4.borderSoft}` } }, /* @__PURE__ */ import_react6.default.createElement("div", { style: { fontFamily: F4.body, fontSize: 12.5, color: C4.paper, marginBottom: 3 } }, s.title), /* @__PURE__ */ import_react6.default.createElement("div", { style: { fontFamily: F4.mono, fontSize: 10.5, color: C4.cyan } }, s.url ? new URL(s.url).hostname : s.domain))))), /* @__PURE__ */ import_react6.default.createElement("div", { className: "flex-1 flex flex-col gap-3" }, script.segments.map((seg, i) => {
       const prevAct = i > 0 ? script.segments[i - 1].act : null;
       const showActHeader = seg.act && seg.act !== prevAct;
       const actMeta = showActHeader ? ACT_LABELS[seg.act] : null;
-      return /* @__PURE__ */ import_react5.default.createElement(import_react5.default.Fragment, { key: i }, showActHeader && /* @__PURE__ */ import_react5.default.createElement("div", { className: "flex items-center gap-2 mt-2 first:mt-0" }, /* @__PURE__ */ import_react5.default.createElement("span", { style: { fontFamily: F3.mono, fontSize: 10.5, color: C3.amber, letterSpacing: "0.1em", fontWeight: 600 } }, "BABAK \xB7 ", actMeta || seg.act), /* @__PURE__ */ import_react5.default.createElement("div", { className: "flex-1", style: { height: 1, background: C3.borderSoft } })), /* @__PURE__ */ import_react5.default.createElement("div", { className: "px-4 py-3.5 rounded", style: { background: C3.panel, border: `1px solid ${C3.borderSoft}` } }, /* @__PURE__ */ import_react5.default.createElement("div", { className: "flex items-start justify-between gap-3 mb-2" }, /* @__PURE__ */ import_react5.default.createElement("span", { style: { fontFamily: F3.mono, fontSize: 11, color: C3.paperFaint } }, "SEGMEN ", String(i + 1).padStart(2, "0"))), /* @__PURE__ */ import_react5.default.createElement(
+      return /* @__PURE__ */ import_react6.default.createElement(import_react6.default.Fragment, { key: i }, showActHeader && /* @__PURE__ */ import_react6.default.createElement("div", { className: "flex items-center gap-2 mt-2 first:mt-0" }, /* @__PURE__ */ import_react6.default.createElement("span", { style: { fontFamily: F4.mono, fontSize: 10.5, color: C4.amber, letterSpacing: "0.1em", fontWeight: 600 } }, "BABAK \xB7 ", actMeta || seg.act), /* @__PURE__ */ import_react6.default.createElement("div", { className: "flex-1", style: { height: 1, background: C4.borderSoft } })), /* @__PURE__ */ import_react6.default.createElement("div", { className: "px-4 py-3.5 rounded", style: { background: C4.panel, border: `1px solid ${C4.borderSoft}` } }, /* @__PURE__ */ import_react6.default.createElement("div", { className: "flex items-start justify-between gap-3 mb-2" }, /* @__PURE__ */ import_react6.default.createElement("span", { style: { fontFamily: F4.mono, fontSize: 11, color: C4.paperFaint } }, "SEGMEN ", String(i + 1).padStart(2, "0"))), /* @__PURE__ */ import_react6.default.createElement(
         "textarea",
         {
           value: seg.text,
           onChange: (e) => updateSegmentText(i, e.target.value),
           rows: 2,
           className: "w-full resize-none",
-          style: { fontFamily: F3.body, fontSize: 13.5, color: C3.paper, lineHeight: 1.5, marginBottom: 10, background: "transparent", border: "none", outline: "none" }
+          style: { fontFamily: F4.body, fontSize: 13.5, color: C4.paper, lineHeight: 1.5, marginBottom: 10, background: "transparent", border: "none", outline: "none" }
         }
-      ), /* @__PURE__ */ import_react5.default.createElement("div", { className: "flex flex-wrap gap-1.5" }, seg.keywords.map((k, ki) => /* @__PURE__ */ import_react5.default.createElement("span", { key: ki, className: "flex items-center gap-1 px-2 py-1 rounded", style: { fontFamily: F3.mono, fontSize: 10.5, color: C3.paperDim, background: C3.panelRaised, border: `1px solid ${C3.border}` } }, k, /* @__PURE__ */ import_react5.default.createElement(X, { size: 10, style: { cursor: "pointer" }, onClick: () => removeKeyword(i, ki) }))))));
-    }))), /* @__PURE__ */ import_react5.default.createElement("div", { className: "flex justify-between items-center mt-5" }, /* @__PURE__ */ import_react5.default.createElement("div", { className: "flex gap-4" }, /* @__PURE__ */ import_react5.default.createElement("button", { onClick: () => setScript(null), className: "flex items-center gap-1.5", style: { fontFamily: F3.body, fontSize: 12.5, color: C3.paperDim, background: "none", border: "none", cursor: "pointer" } }, /* @__PURE__ */ import_react5.default.createElement(RefreshCw, { size: 13 }), " Generate ulang"), /* @__PURE__ */ import_react5.default.createElement("button", { onClick: downloadScriptText, className: "flex items-center gap-1.5", style: { fontFamily: F3.body, fontSize: 12.5, color: C3.cyan, background: "none", border: "none", cursor: "pointer" } }, /* @__PURE__ */ import_react5.default.createElement(Download, { size: 13 }), " Download Teks (.txt)")), /* @__PURE__ */ import_react5.default.createElement(PrimaryButton2, { onClick: onNext, icon: ChevronRight }, "Lanjut ke Narasi"))));
+      ), /* @__PURE__ */ import_react6.default.createElement("div", { className: "flex flex-wrap gap-1.5" }, seg.keywords.map((k, ki) => /* @__PURE__ */ import_react6.default.createElement("span", { key: ki, className: "flex items-center gap-1 px-2 py-1 rounded", style: { fontFamily: F4.mono, fontSize: 10.5, color: C4.paperDim, background: C4.panelRaised, border: `1px solid ${C4.border}` } }, k, /* @__PURE__ */ import_react6.default.createElement(X, { size: 10, style: { cursor: "pointer" }, onClick: () => removeKeyword(i, ki) }))))));
+    }))), /* @__PURE__ */ import_react6.default.createElement("div", { className: "flex justify-between items-center mt-5" }, /* @__PURE__ */ import_react6.default.createElement("div", { className: "flex gap-4" }, /* @__PURE__ */ import_react6.default.createElement("button", { onClick: () => setScript(null), className: "flex items-center gap-1.5", style: { fontFamily: F4.body, fontSize: 12.5, color: C4.paperDim, background: "none", border: "none", cursor: "pointer" } }, /* @__PURE__ */ import_react6.default.createElement(RefreshCw, { size: 13 }), " Generate ulang"), /* @__PURE__ */ import_react6.default.createElement("button", { onClick: downloadScriptText, className: "flex items-center gap-1.5", style: { fontFamily: F4.body, fontSize: 12.5, color: C4.cyan, background: "none", border: "none", cursor: "pointer" } }, /* @__PURE__ */ import_react6.default.createElement(Download, { size: 13 }), " Download Teks (.txt)")), /* @__PURE__ */ import_react6.default.createElement(PrimaryButton2, { onClick: onNext, icon: ChevronRight }, "Lanjut ke Narasi"))));
   }
   async function extractWaveform(audioUrl, barCount = 72) {
     try {
@@ -25227,14 +25423,31 @@ BABAK: ${actLabel}
     }
   }
   function StageNarration({ script, narration, setNarration, onNext }) {
-    const [ttsProvider, setTtsProvider] = (0, import_react5.useState)("pyttsx3");
-    const [job, setJob] = (0, import_react5.useState)(null);
-    const [error, setError] = (0, import_react5.useState)(null);
-    const [waveform, setWaveform] = (0, import_react5.useState)(null);
-    const [audioFile, setAudioFile] = (0, import_react5.useState)(null);
-    const cancelRef = (0, import_react5.useRef)(null);
-    (0, import_react5.useEffect)(() => () => cancelRef.current && cancelRef.current(), []);
-    (0, import_react5.useEffect)(() => {
+    const [ttsProvider, setTtsProvider] = (0, import_react6.useState)("pyttsx3");
+    const [job, setJob] = (0, import_react6.useState)(null);
+    const [error, setError] = (0, import_react6.useState)(null);
+    const [waveform, setWaveform] = (0, import_react6.useState)(null);
+    const [audioFile, setAudioFile] = (0, import_react6.useState)(null);
+    const [voices, setVoices] = (0, import_react6.useState)([]);
+    const [perSegVoices, setPerSegVoices] = (0, import_react6.useState)({});
+    const cancelRef = (0, import_react6.useRef)(null);
+    (0, import_react6.useEffect)(() => () => cancelRef.current && cancelRef.current(), []);
+    (0, import_react6.useEffect)(() => {
+      if (ttsProvider === "upload") {
+        setVoices([]);
+        return;
+      }
+      let cancelled = false;
+      fetch(`/api/narration/voices?provider=${encodeURIComponent(ttsProvider)}`).then((r) => r.ok ? r.json() : null).then((data) => {
+        if (!cancelled && data) setVoices(data.voices || []);
+      }).catch(() => {
+      });
+      return () => {
+        cancelled = true;
+      };
+    }, [ttsProvider]);
+    const pickVoice = (i, vid) => setPerSegVoices((prev) => ({ ...prev, [i]: vid }));
+    (0, import_react6.useEffect)(() => {
       if (narration?.audio_url) {
         extractWaveform(narration.audio_url).then(setWaveform);
       }
@@ -25262,9 +25475,10 @@ BABAK: ${actLabel}
           const data = await res.json();
           job_id = data.job_id;
         } else {
-          const data = await apiPostJSON3("/api/narration/generate", {
+          const data = await apiPostJSON4("/api/narration/generate", {
             segments: script.segments,
-            tts_provider: ttsProvider
+            tts_provider: ttsProvider,
+            voices: script.segments.map((_, i) => perSegVoices[i] || "")
           });
           job_id = data.job_id;
         }
@@ -25292,20 +25506,29 @@ BABAK: ${actLabel}
       });
       total = narration.segments.length ? narration.segments[narration.segments.length - 1].end : 0;
     }
-    return /* @__PURE__ */ import_react5.default.createElement("div", { className: "flex flex-col gap-6" }, /* @__PURE__ */ import_react5.default.createElement("div", null, /* @__PURE__ */ import_react5.default.createElement(Eyebrow, { n: 3 }, "NARRATION BOOTH"), /* @__PURE__ */ import_react5.default.createElement("h2", { style: { fontFamily: F3.display, fontSize: 22, color: C3.paper, fontWeight: 700 } }, "Generate Suara & Timing")), !narration && /* @__PURE__ */ import_react5.default.createElement("div", { className: "flex flex-col gap-3" }, /* @__PURE__ */ import_react5.default.createElement("div", { className: "flex gap-2" }, [{ id: "pyttsx3", label: "pyttsx3 \xB7 gratis" }, { id: "f5tts", label: "F5-TTS \xB7 local" }, { id: "omnivoice", label: "OmniVoice \xB7 local" }, { id: "elevenlabs", label: "ElevenLabs \xB7 premium" }, { id: "upload", label: "Upload Sendiri" }].map((opt) => /* @__PURE__ */ import_react5.default.createElement(
+    return /* @__PURE__ */ import_react6.default.createElement("div", { className: "flex flex-col gap-6" }, /* @__PURE__ */ import_react6.default.createElement("div", null, /* @__PURE__ */ import_react6.default.createElement(Eyebrow, { n: 3 }, "NARRATION BOOTH"), /* @__PURE__ */ import_react6.default.createElement("h2", { style: { fontFamily: F4.display, fontSize: 22, color: C4.paper, fontWeight: 700 } }, "Generate Suara & Timing")), !narration && /* @__PURE__ */ import_react6.default.createElement("div", { className: "flex flex-col gap-3" }, /* @__PURE__ */ import_react6.default.createElement("div", { className: "flex gap-2" }, [{ id: "pyttsx3", label: "pyttsx3 \xB7 gratis" }, { id: "f5tts", label: "F5-TTS \xB7 local" }, { id: "omnivoice", label: "OmniVoice \xB7 local" }, { id: "elevenlabs", label: "ElevenLabs \xB7 premium" }, { id: "upload", label: "Upload Sendiri" }].map((opt) => /* @__PURE__ */ import_react6.default.createElement(
       "button",
       {
         key: opt.id,
         onClick: () => setTtsProvider(opt.id),
         className: "px-4 py-2 rounded",
-        style: { fontFamily: F3.body, fontSize: 12.5, fontWeight: 600, cursor: "pointer", background: ttsProvider === opt.id ? C3.tally : C3.panel, color: ttsProvider === opt.id ? C3.paper : C3.paperDim, border: `1px solid ${ttsProvider === opt.id ? C3.tally : C3.borderSoft}` }
+        style: { fontFamily: F4.body, fontSize: 12.5, fontWeight: 600, cursor: "pointer", background: ttsProvider === opt.id ? C4.tally : C4.panel, color: ttsProvider === opt.id ? C4.paper : C4.paperDim, border: `1px solid ${ttsProvider === opt.id ? C4.tally : C4.borderSoft}` }
       },
       opt.label
-    ))), ttsProvider === "upload" && /* @__PURE__ */ import_react5.default.createElement("div", { className: "flex flex-col gap-2 p-4 rounded", style: { background: "rgba(255,255,255,0.02)", border: `1px dashed ${C3.borderSoft}` } }, /* @__PURE__ */ import_react5.default.createElement("label", { style: { fontFamily: F3.body, fontSize: 13, color: C3.paperDim } }, "Pilih file rekaman suara Anda (.wav, .mp3, .m4a)"), /* @__PURE__ */ import_react5.default.createElement("input", { type: "file", accept: "audio/*", onChange: (e) => setAudioFile(e.target.files[0]), style: { color: C3.paper } })), error && /* @__PURE__ */ import_react5.default.createElement(ErrorBanner, { error, onRetry: runGenerate }), job && /* @__PURE__ */ import_react5.default.createElement(ProgressBar, { progress: job.progress, message: job.message }), !job && /* @__PURE__ */ import_react5.default.createElement(PrimaryButton2, { onClick: runGenerate, icon: Mic }, ttsProvider === "upload" ? "Selaraskan Audio" : "Generate Suara")), narration && /* @__PURE__ */ import_react5.default.createElement(import_react5.default.Fragment, null, /* @__PURE__ */ import_react5.default.createElement("audio", { controls: true, src: narration.audio_url, style: { width: "100%", height: 34 } }), /* @__PURE__ */ import_react5.default.createElement("div", { className: "px-4 py-5 rounded relative", style: { background: C3.panel, border: `1px solid ${C3.borderSoft}` } }, /* @__PURE__ */ import_react5.default.createElement("div", { className: "flex items-end gap-[2px]", style: { height: 64 } }, (waveform || Array.from({ length: 72 }, () => 20)).map((h, i) => /* @__PURE__ */ import_react5.default.createElement("div", { key: i, style: { width: 3, height: `${h}px`, background: C3.cyan, opacity: 0.55, borderRadius: 1 } }))), /* @__PURE__ */ import_react5.default.createElement("div", { className: "relative mt-2", style: { height: 16 } }, bounds.map((b, i) => /* @__PURE__ */ import_react5.default.createElement("span", { key: i, className: "absolute", style: { left: `${total ? b / total * 100 : 0}%`, fontFamily: F3.mono, fontSize: 9.5, color: C3.paperFaint, transform: "translateX(-2px)" } }, fmtTime(b))))), /* @__PURE__ */ import_react5.default.createElement("div", { className: "flex flex-col gap-2" }, narration.segments.map((seg, i) => /* @__PURE__ */ import_react5.default.createElement("div", { key: i, className: "flex items-center gap-3 px-4 py-2.5 rounded", style: { background: C3.panel, border: `1px solid ${C3.borderSoft}` } }, /* @__PURE__ */ import_react5.default.createElement("span", { style: { fontFamily: F3.mono, fontSize: 11, color: C3.cyan, width: 96, flexShrink: 0 } }, fmtTime(seg.start), "\u2013", fmtTime(seg.end)), /* @__PURE__ */ import_react5.default.createElement("span", { style: { fontFamily: F3.body, fontSize: 12.5, color: C3.paperDim, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0, flex: 1 } }, seg.text)))), /* @__PURE__ */ import_react5.default.createElement("div", { className: "flex items-center justify-between mt-4" }, /* @__PURE__ */ import_react5.default.createElement("button", { onClick: () => setNarration(null), className: "flex items-center gap-1.5 px-3 py-1.5 rounded hover:bg-white/5 transition-colors", style: { fontFamily: F3.body, fontSize: 12, color: C3.paperDim, border: `1px solid ${C3.borderSoft}` } }, /* @__PURE__ */ import_react5.default.createElement(RefreshCw, { size: 14 }), " Generate ulang"), /* @__PURE__ */ import_react5.default.createElement(PrimaryButton2, { onClick: onNext, icon: ChevronRight }, "Lanjut ke Footage"))));
+    ))), ttsProvider === "upload" && /* @__PURE__ */ import_react6.default.createElement("div", { className: "flex flex-col gap-2 p-4 rounded", style: { background: "rgba(255,255,255,0.02)", border: `1px dashed ${C4.borderSoft}` } }, /* @__PURE__ */ import_react6.default.createElement("label", { style: { fontFamily: F4.body, fontSize: 13, color: C4.paperDim } }, "Pilih file rekaman suara Anda (.wav, .mp3, .m4a)"), /* @__PURE__ */ import_react6.default.createElement("input", { type: "file", accept: "audio/*", onChange: (e) => setAudioFile(e.target.files[0]), style: { color: C4.paper } })), ttsProvider !== "upload" && voices.length > 0 && script.segments.length > 0 && /* @__PURE__ */ import_react6.default.createElement("div", { className: "flex flex-col gap-2 p-4 rounded", style: { background: "rgba(255,255,255,0.02)", border: `1px solid ${C4.borderSoft}` } }, /* @__PURE__ */ import_react6.default.createElement("span", { style: { fontFamily: F4.mono, fontSize: 10, color: C4.amber, letterSpacing: "0.08em" } }, "MULTI-VOICE \xB7 suara per segmen"), /* @__PURE__ */ import_react6.default.createElement("div", { className: "flex flex-col gap-1.5" }, script.segments.map((seg, i) => /* @__PURE__ */ import_react6.default.createElement("div", { key: i, className: "flex items-center gap-3" }, /* @__PURE__ */ import_react6.default.createElement("span", { style: { fontFamily: F4.mono, fontSize: 10.5, color: C4.paperFaint, width: 64, flexShrink: 0 } }, "Seg ", i + 1), /* @__PURE__ */ import_react6.default.createElement(
+      "select",
+      {
+        value: perSegVoices[i] || "",
+        onChange: (e) => pickVoice(i, e.target.value),
+        style: { flex: 1, fontFamily: F4.body, fontSize: 12, color: C4.paper, background: C4.panel, border: `1px solid ${C4.borderSoft}`, borderRadius: 6, padding: "6px 8px", outline: "none" }
+      },
+      /* @__PURE__ */ import_react6.default.createElement("option", { value: "" }, "Default (", voices[0]?.name || "auto", ")"),
+      voices.map((v) => /* @__PURE__ */ import_react6.default.createElement("option", { key: v.id, value: v.id }, v.name, v.lang ? ` \xB7 ${v.lang}` : ""))
+    ), /* @__PURE__ */ import_react6.default.createElement("span", { style: { fontFamily: F4.body, fontSize: 11, color: C4.paperFaint, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 220 } }, seg.text)))), /* @__PURE__ */ import_react6.default.createElement("span", { style: { fontFamily: F4.body, fontSize: 11, color: C4.paperFaint } }, "Kosongkan = default. Bisa beda suara tiap segmen (skit/dialog/narrator).")), error && /* @__PURE__ */ import_react6.default.createElement(ErrorBanner, { error, onRetry: runGenerate }), job && /* @__PURE__ */ import_react6.default.createElement(ProgressBar, { progress: job.progress, message: job.message }), !job && /* @__PURE__ */ import_react6.default.createElement(PrimaryButton2, { onClick: runGenerate, icon: Mic }, ttsProvider === "upload" ? "Selaraskan Audio" : "Generate Suara")), narration && /* @__PURE__ */ import_react6.default.createElement(import_react6.default.Fragment, null, /* @__PURE__ */ import_react6.default.createElement("audio", { controls: true, src: narration.audio_url, style: { width: "100%", height: 34 } }), /* @__PURE__ */ import_react6.default.createElement("div", { className: "px-4 py-5 rounded relative", style: { background: C4.panel, border: `1px solid ${C4.borderSoft}` } }, /* @__PURE__ */ import_react6.default.createElement("div", { className: "flex items-end gap-[2px]", style: { height: 64 } }, (waveform || Array.from({ length: 72 }, () => 20)).map((h, i) => /* @__PURE__ */ import_react6.default.createElement("div", { key: i, style: { width: 3, height: `${h}px`, background: C4.cyan, opacity: 0.55, borderRadius: 1 } }))), /* @__PURE__ */ import_react6.default.createElement("div", { className: "relative mt-2", style: { height: 16 } }, bounds.map((b, i) => /* @__PURE__ */ import_react6.default.createElement("span", { key: i, className: "absolute", style: { left: `${total ? b / total * 100 : 0}%`, fontFamily: F4.mono, fontSize: 9.5, color: C4.paperFaint, transform: "translateX(-2px)" } }, fmtTime(b))))), /* @__PURE__ */ import_react6.default.createElement("div", { className: "flex flex-col gap-2" }, narration.segments.map((seg, i) => /* @__PURE__ */ import_react6.default.createElement("div", { key: i, className: "flex items-center gap-3 px-4 py-2.5 rounded", style: { background: C4.panel, border: `1px solid ${C4.borderSoft}` } }, /* @__PURE__ */ import_react6.default.createElement("span", { style: { fontFamily: F4.mono, fontSize: 11, color: C4.cyan, width: 96, flexShrink: 0 } }, fmtTime(seg.start), "\u2013", fmtTime(seg.end)), /* @__PURE__ */ import_react6.default.createElement("span", { style: { fontFamily: F4.body, fontSize: 12.5, color: C4.paperDim, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0, flex: 1 } }, seg.text)))), /* @__PURE__ */ import_react6.default.createElement("div", { className: "flex items-center justify-between mt-4" }, /* @__PURE__ */ import_react6.default.createElement("button", { onClick: () => setNarration(null), className: "flex items-center gap-1.5 px-3 py-1.5 rounded hover:bg-white/5 transition-colors", style: { fontFamily: F4.body, fontSize: 12, color: C4.paperDim, border: `1px solid ${C4.borderSoft}` } }, /* @__PURE__ */ import_react6.default.createElement(RefreshCw, { size: 14 }), " Generate ulang"), /* @__PURE__ */ import_react6.default.createElement(PrimaryButton2, { onClick: onNext, icon: ChevronRight }, "Lanjut ke Footage"))));
   }
   function StageFootage({ narration, footageData, setFootageData, picks, setPicks, onNext, scriptJobId }) {
-    const [activeSeg, setActiveSeg] = (0, import_react5.useState)(0);
-    const [exportJob, setExportJob] = (0, import_react5.useState)(null);
+    const [activeSeg, setActiveSeg] = (0, import_react6.useState)(0);
+    const [exportJob, setExportJob] = (0, import_react6.useState)(null);
     const downloadProject = async () => {
       try {
         setExportJob({ progress: 10, message: "Mempersiapkan project..." });
@@ -25342,17 +25565,17 @@ BABAK: ${actLabel}
         setExportJob(null);
       }
     };
-    const [job, setJob] = (0, import_react5.useState)(null);
-    const [error, setError] = (0, import_react5.useState)(null);
-    const cancelRef = (0, import_react5.useRef)(null);
-    (0, import_react5.useEffect)(() => () => cancelRef.current && cancelRef.current(), []);
+    const [job, setJob] = (0, import_react6.useState)(null);
+    const [error, setError] = (0, import_react6.useState)(null);
+    const cancelRef = (0, import_react6.useRef)(null);
+    (0, import_react6.useEffect)(() => () => cancelRef.current && cancelRef.current(), []);
     const runMatch = async () => {
       setError(null);
       setJob({ progress: 2, message: "Memulai\u2026" });
       try {
         const body = { segments: narration.segments };
         if (scriptJobId) body.wait_for_script_job = scriptJobId;
-        const { job_id } = await apiPostJSON3("/api/footage/match", body);
+        const { job_id } = await apiPostJSON4("/api/footage/match", body);
         cancelRef.current = pollJob(job_id, {
           onUpdate: (j) => setJob({ progress: j.progress, message: j.message }),
           onDone: (result) => {
@@ -25376,40 +25599,40 @@ BABAK: ${actLabel}
     };
     const segData = footageData ? footageData[String(activeSeg)] : null;
     const candidates = segData?.candidates || [];
-    return /* @__PURE__ */ import_react5.default.createElement("div", { className: "flex flex-col gap-6" }, /* @__PURE__ */ import_react5.default.createElement("div", null, /* @__PURE__ */ import_react5.default.createElement(Eyebrow, { n: 4 }, "FOOTAGE MATCHING BOARD"), /* @__PURE__ */ import_react5.default.createElement("h2", { style: { fontFamily: F3.display, fontSize: 22, color: C3.paper, fontWeight: 700 } }, "Cocokkan Footage per Segmen")), /* @__PURE__ */ import_react5.default.createElement("div", { className: "flex items-start gap-2 px-3.5 py-2.5 rounded", style: { background: C3.panel, border: `1px solid ${C3.borderSoft}` } }, /* @__PURE__ */ import_react5.default.createElement(Info, { size: 14, color: C3.amber, style: { marginTop: 1, flexShrink: 0 } }), /* @__PURE__ */ import_react5.default.createElement("span", { style: { fontFamily: F3.body, fontSize: 11.5, color: C3.paperDim, lineHeight: 1.5 } }, "Sumber legal only \u2014 Pexels, Pixabay, Wikimedia Commons, Archive.org, dan YouTube berlisensi Creative Commons.")), !footageData && /* @__PURE__ */ import_react5.default.createElement("div", { className: "flex flex-col gap-3" }, error && /* @__PURE__ */ import_react5.default.createElement(ErrorBanner, { error, onRetry: runMatch }), job && /* @__PURE__ */ import_react5.default.createElement(ProgressBar, { progress: job.progress, message: job.message }), !job && /* @__PURE__ */ import_react5.default.createElement(PrimaryButton2, { onClick: runMatch, icon: ScanSearch }, "Cari Footage")), footageData && /* @__PURE__ */ import_react5.default.createElement(import_react5.default.Fragment, null, /* @__PURE__ */ import_react5.default.createElement("div", { className: "flex gap-2 overflow-x-auto pb-1" }, narration.segments.map((s, i) => /* @__PURE__ */ import_react5.default.createElement(
+    return /* @__PURE__ */ import_react6.default.createElement("div", { className: "flex flex-col gap-6" }, /* @__PURE__ */ import_react6.default.createElement("div", null, /* @__PURE__ */ import_react6.default.createElement(Eyebrow, { n: 4 }, "FOOTAGE MATCHING BOARD"), /* @__PURE__ */ import_react6.default.createElement("h2", { style: { fontFamily: F4.display, fontSize: 22, color: C4.paper, fontWeight: 700 } }, "Cocokkan Footage per Segmen")), /* @__PURE__ */ import_react6.default.createElement("div", { className: "flex items-start gap-2 px-3.5 py-2.5 rounded", style: { background: C4.panel, border: `1px solid ${C4.borderSoft}` } }, /* @__PURE__ */ import_react6.default.createElement(Info, { size: 14, color: C4.amber, style: { marginTop: 1, flexShrink: 0 } }), /* @__PURE__ */ import_react6.default.createElement("span", { style: { fontFamily: F4.body, fontSize: 11.5, color: C4.paperDim, lineHeight: 1.5 } }, "Sumber legal only \u2014 Pexels, Pixabay, Wikimedia Commons, Archive.org, dan YouTube berlisensi Creative Commons.")), !footageData && /* @__PURE__ */ import_react6.default.createElement("div", { className: "flex flex-col gap-3" }, error && /* @__PURE__ */ import_react6.default.createElement(ErrorBanner, { error, onRetry: runMatch }), job && /* @__PURE__ */ import_react6.default.createElement(ProgressBar, { progress: job.progress, message: job.message }), !job && /* @__PURE__ */ import_react6.default.createElement(PrimaryButton2, { onClick: runMatch, icon: ScanSearch }, "Cari Footage")), footageData && /* @__PURE__ */ import_react6.default.createElement(import_react6.default.Fragment, null, /* @__PURE__ */ import_react6.default.createElement("div", { className: "flex gap-2 overflow-x-auto pb-1" }, narration.segments.map((s, i) => /* @__PURE__ */ import_react6.default.createElement(
       "button",
       {
         key: i,
         onClick: () => setActiveSeg(i),
         className: "px-3.5 py-1.5 rounded flex-shrink-0",
-        style: { fontFamily: F3.mono, fontSize: 11.5, cursor: "pointer", background: activeSeg === i ? C3.tally : C3.panel, color: activeSeg === i ? C3.paper : C3.paperDim, border: `1px solid ${activeSeg === i ? C3.tally : C3.borderSoft}` }
+        style: { fontFamily: F4.mono, fontSize: 11.5, cursor: "pointer", background: activeSeg === i ? C4.tally : C4.panel, color: activeSeg === i ? C4.paper : C4.paperDim, border: `1px solid ${activeSeg === i ? C4.tally : C4.borderSoft}` }
       },
       "SEG ",
       String(i + 1).padStart(2, "0")
-    ))), candidates.length === 0 ? /* @__PURE__ */ import_react5.default.createElement("div", { className: "px-4 py-6 rounded text-center", style: { background: C3.panel, border: `1px solid ${C3.borderSoft}` } }, /* @__PURE__ */ import_react5.default.createElement("span", { style: { fontFamily: F3.body, fontSize: 12.5, color: C3.paperDim } }, "Nggak ada footage yang ketemu buat segmen ini \u2014 coba ubah keyword di Stage 2.")) : /* @__PURE__ */ import_react5.default.createElement("div", { className: "grid grid-cols-2 sm:grid-cols-4 gap-3" }, candidates.map((c, ci) => {
+    ))), candidates.length === 0 ? /* @__PURE__ */ import_react6.default.createElement("div", { className: "px-4 py-6 rounded text-center", style: { background: C4.panel, border: `1px solid ${C4.borderSoft}` } }, /* @__PURE__ */ import_react6.default.createElement("span", { style: { fontFamily: F4.body, fontSize: 12.5, color: C4.paperDim } }, "Nggak ada footage yang ketemu buat segmen ini \u2014 coba ubah keyword di Stage 2.")) : /* @__PURE__ */ import_react6.default.createElement("div", { className: "grid grid-cols-2 sm:grid-cols-4 gap-3" }, candidates.map((c, ci) => {
       const isPicked = picks[activeSeg] === ci;
-      return /* @__PURE__ */ import_react5.default.createElement(
+      return /* @__PURE__ */ import_react6.default.createElement(
         "button",
         {
           key: ci,
           onClick: () => setPicks({ ...picks, [activeSeg]: ci }),
           className: "flex flex-col rounded overflow-hidden text-left",
-          style: { background: C3.panel, cursor: "pointer", border: `1.5px solid ${isPicked ? C3.tally : C3.borderSoft}` }
+          style: { background: C4.panel, cursor: "pointer", border: `1.5px solid ${isPicked ? C4.tally : C4.borderSoft}` }
         },
-        /* @__PURE__ */ import_react5.default.createElement("div", { className: "flex items-center justify-center relative", style: { height: 80, background: C3.panelRaised, backgroundImage: c.thumbnail_url ? `url(${c.thumbnail_url})` : "none", backgroundSize: "cover", backgroundPosition: "center" } }, !c.thumbnail_url && /* @__PURE__ */ import_react5.default.createElement(Film, { size: 20, color: C3.paperFaint }), ci === 0 && /* @__PURE__ */ import_react5.default.createElement("span", { className: "absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded", style: { fontFamily: F3.mono, fontSize: 8.5, background: C3.tally, color: C3.paper } }, "MATCH TERBAIK"), isPicked && /* @__PURE__ */ import_react5.default.createElement("div", { className: "absolute top-1.5 right-1.5 rounded-full flex items-center justify-center", style: { width: 18, height: 18, background: C3.cyan } }, /* @__PURE__ */ import_react5.default.createElement(Check, { size: 11, color: C3.bg, strokeWidth: 3 }))),
-        /* @__PURE__ */ import_react5.default.createElement("div", { className: "px-2.5 py-2 flex flex-col gap-1.5" }, /* @__PURE__ */ import_react5.default.createElement("span", { style: { fontFamily: F3.mono, fontSize: 9.5, color: SOURCE_STYLES[c.source] || C3.paperDim, letterSpacing: "0.05em" } }, c.source), /* @__PURE__ */ import_react5.default.createElement("div", { className: "flex items-center gap-1.5" }, /* @__PURE__ */ import_react5.default.createElement("div", { className: "flex-1 rounded-full overflow-hidden", style: { height: 3, background: C3.border } }, /* @__PURE__ */ import_react5.default.createElement("div", { style: { width: `${c.score * 100}%`, height: "100%", background: C3.cyan } })), /* @__PURE__ */ import_react5.default.createElement("span", { style: { fontFamily: F3.mono, fontSize: 10, color: C3.paperDim } }, Math.round(c.score * 100), "%")))
+        /* @__PURE__ */ import_react6.default.createElement("div", { className: "flex items-center justify-center relative", style: { height: 80, background: C4.panelRaised, backgroundImage: c.thumbnail_url ? `url(${c.thumbnail_url})` : "none", backgroundSize: "cover", backgroundPosition: "center" } }, !c.thumbnail_url && /* @__PURE__ */ import_react6.default.createElement(Film, { size: 20, color: C4.paperFaint }), ci === 0 && /* @__PURE__ */ import_react6.default.createElement("span", { className: "absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded", style: { fontFamily: F4.mono, fontSize: 8.5, background: C4.tally, color: C4.paper } }, "MATCH TERBAIK"), isPicked && /* @__PURE__ */ import_react6.default.createElement("div", { className: "absolute top-1.5 right-1.5 rounded-full flex items-center justify-center", style: { width: 18, height: 18, background: C4.cyan } }, /* @__PURE__ */ import_react6.default.createElement(Check, { size: 11, color: C4.bg, strokeWidth: 3 }))),
+        /* @__PURE__ */ import_react6.default.createElement("div", { className: "px-2.5 py-2 flex flex-col gap-1.5" }, /* @__PURE__ */ import_react6.default.createElement("span", { style: { fontFamily: F4.mono, fontSize: 9.5, color: SOURCE_STYLES[c.source] || C4.paperDim, letterSpacing: "0.05em" } }, c.source), /* @__PURE__ */ import_react6.default.createElement("div", { className: "flex items-center gap-1.5" }, /* @__PURE__ */ import_react6.default.createElement("div", { className: "flex-1 rounded-full overflow-hidden", style: { height: 3, background: C4.border } }, /* @__PURE__ */ import_react6.default.createElement("div", { style: { width: `${c.score * 100}%`, height: "100%", background: C4.cyan } })), /* @__PURE__ */ import_react6.default.createElement("span", { style: { fontFamily: F4.mono, fontSize: 10, color: C4.paperDim } }, Math.round(c.score * 100), "%")))
       );
-    })), exportJob && /* @__PURE__ */ import_react5.default.createElement(ProgressBar, { progress: exportJob.progress, message: exportJob.message }), /* @__PURE__ */ import_react5.default.createElement("div", { className: "flex justify-end gap-3" }, !exportJob && /* @__PURE__ */ import_react5.default.createElement(PrimaryButton2, { onClick: downloadProject, icon: Download }, "Download Project (.edl / .fcpxml / .html)"), /* @__PURE__ */ import_react5.default.createElement(PrimaryButton2, { onClick: onNext, icon: ChevronRight }, "Lanjut ke Render"))));
+    })), exportJob && /* @__PURE__ */ import_react6.default.createElement(ProgressBar, { progress: exportJob.progress, message: exportJob.message }), /* @__PURE__ */ import_react6.default.createElement("div", { className: "flex justify-end gap-3" }, !exportJob && /* @__PURE__ */ import_react6.default.createElement(PrimaryButton2, { onClick: downloadProject, icon: Download }, "Download Project (.edl / .fcpxml / .html)"), /* @__PURE__ */ import_react6.default.createElement(PrimaryButton2, { onClick: onNext, icon: ChevronRight }, "Lanjut ke Render"))));
   }
   function FootageExtractorTool({ onClose }) {
-    const [file, setFile] = (0, import_react5.useState)(null);
-    const [youtubeUrl, setYoutubeUrl] = (0, import_react5.useState)("");
-    const [topic, setTopic] = (0, import_react5.useState)("");
-    const [inputType, setInputType] = (0, import_react5.useState)("file");
-    const [jobId, setJobId] = (0, import_react5.useState)(null);
-    const [job, setJob] = (0, import_react5.useState)(null);
-    const [error, setError] = (0, import_react5.useState)(null);
-    const [result, setResult] = (0, import_react5.useState)(null);
+    const [file, setFile] = (0, import_react6.useState)(null);
+    const [youtubeUrl, setYoutubeUrl] = (0, import_react6.useState)("");
+    const [topic, setTopic] = (0, import_react6.useState)("");
+    const [inputType, setInputType] = (0, import_react6.useState)("file");
+    const [jobId, setJobId] = (0, import_react6.useState)(null);
+    const [job, setJob] = (0, import_react6.useState)(null);
+    const [error, setError] = (0, import_react6.useState)(null);
+    const [result, setResult] = (0, import_react6.useState)(null);
     const handleFile = (e) => {
       if (e.target.files && e.target.files[0]) {
         setFile(e.target.files[0]);
@@ -25430,14 +25653,14 @@ BABAK: ${actLabel}
           if (topic) fd.append("topic", topic);
           res = await apiPostForm("/api/footage/extract", fd);
         } else {
-          res = await apiPostJSON3("/api/footage/extract_youtube", { youtube_url: youtubeUrl, topic });
+          res = await apiPostJSON4("/api/footage/extract_youtube", { youtube_url: youtubeUrl, topic });
         }
         setJobId(res.job_id);
       } catch (e) {
         setError(String(e));
       }
     };
-    (0, import_react5.useEffect)(() => {
+    (0, import_react6.useEffect)(() => {
       if (!jobId) return;
       return pollJob(jobId, {
         onUpdate: setJob,
@@ -25451,19 +25674,20 @@ BABAK: ${actLabel}
         }
       });
     }, [jobId]);
-    return /* @__PURE__ */ import_react5.default.createElement("div", { className: "fixed inset-0 z-50 flex justify-end", style: { background: "rgba(0,0,0,0.5)" } }, /* @__PURE__ */ import_react5.default.createElement("div", { className: "w-full max-w-md h-full flex flex-col shadow-2xl", style: { background: C3.bg, borderLeft: `1px solid ${C3.border}`, animation: "slideInRight 0.3s ease-out forwards" } }, /* @__PURE__ */ import_react5.default.createElement("style", null, `@keyframes slideInRight { from { transform: translateX(100%); } to { transform: translateX(0); } }`), /* @__PURE__ */ import_react5.default.createElement("div", { className: "flex items-center justify-between px-5 py-4", style: { background: C3.panel, borderBottom: `1px solid ${C3.border}` } }, /* @__PURE__ */ import_react5.default.createElement("div", { className: "flex items-center gap-3" }, /* @__PURE__ */ import_react5.default.createElement(Scissors, { size: 18, color: C3.tally }), /* @__PURE__ */ import_react5.default.createElement("span", { style: { fontFamily: F3.display, fontSize: 16, fontWeight: 700, color: C3.paper } }, "Ekstrak Footage")), /* @__PURE__ */ import_react5.default.createElement("button", { onClick: onClose, style: { background: "none", border: "none", cursor: "pointer", color: C3.paperDim } }, /* @__PURE__ */ import_react5.default.createElement(X, { size: 20 }))), /* @__PURE__ */ import_react5.default.createElement("div", { className: "p-5 flex flex-col gap-5 overflow-y-auto flex-1" }, /* @__PURE__ */ import_react5.default.createElement("p", { style: { fontFamily: F3.body, fontSize: 13, color: C3.paperDim, lineHeight: 1.5 } }, 'Potong video panjang secara sekuensial. Hasil potongan akan bisa dicari otomatis oleh Tahap 4 berdasarkan "Kata Kunci Footage".'), /* @__PURE__ */ import_react5.default.createElement("div", { className: "flex gap-2 p-1 rounded", style: { background: C3.panel } }, /* @__PURE__ */ import_react5.default.createElement("button", { onClick: () => setInputType("file"), className: "flex-1 py-1.5 rounded", style: { border: "none", cursor: "pointer", background: inputType === "file" ? C3.borderSoft : "transparent", color: inputType === "file" ? C3.paper : C3.paperDim, fontSize: 12, fontWeight: 600 } }, "File Lokal"), /* @__PURE__ */ import_react5.default.createElement("button", { onClick: () => setInputType("youtube"), className: "flex-1 py-1.5 rounded", style: { border: "none", cursor: "pointer", background: inputType === "youtube" ? C3.borderSoft : "transparent", color: inputType === "youtube" ? C3.paper : C3.paperDim, fontSize: 12, fontWeight: 600 } }, "Link YouTube")), /* @__PURE__ */ import_react5.default.createElement("div", { className: "flex flex-col gap-1.5" }, /* @__PURE__ */ import_react5.default.createElement("span", { style: { fontFamily: F3.mono, fontSize: 10, color: C3.paperFaint, letterSpacing: "0.08em" } }, "VIDEO SUMBER"), inputType === "file" ? /* @__PURE__ */ import_react5.default.createElement("div", { className: "flex items-center gap-3 relative" }, /* @__PURE__ */ import_react5.default.createElement("input", { type: "file", accept: "video/mp4,video/webm", onChange: handleFile, className: "absolute inset-0 opacity-0 cursor-pointer" }), /* @__PURE__ */ import_react5.default.createElement("div", { className: "flex-1 px-3 py-2 rounded flex items-center justify-between", style: { background: C3.panel, border: `1px dashed ${C3.borderSoft}` } }, /* @__PURE__ */ import_react5.default.createElement("span", { style: { fontFamily: F3.mono, fontSize: 11, color: file ? C3.cyan : C3.paperDim, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } }, file ? file.name : "Pilih file video (.mp4)..."), /* @__PURE__ */ import_react5.default.createElement(Upload, { size: 14, color: file ? C3.cyan : C3.paperDim }))) : /* @__PURE__ */ import_react5.default.createElement("input", { type: "text", placeholder: "https://www.youtube.com/watch?v=...", value: youtubeUrl, onChange: (e) => setYoutubeUrl(e.target.value), className: "w-full px-3 py-2 rounded", style: { background: C3.panel, border: `1px solid ${C3.borderSoft}`, color: C3.paper, fontSize: 13 } })), /* @__PURE__ */ import_react5.default.createElement("div", { className: "flex flex-col gap-1.5" }, /* @__PURE__ */ import_react5.default.createElement("span", { style: { fontFamily: F3.mono, fontSize: 10, color: C3.paperFaint, letterSpacing: "0.08em" } }, "TOPIK VIDEO (Opsional)"), /* @__PURE__ */ import_react5.default.createElement("input", { type: "text", placeholder: "Misal: Ekonomi IKN", value: topic, onChange: (e) => setTopic(e.target.value), className: "w-full px-3 py-2 rounded", style: { background: C3.panel, border: `1px solid ${C3.borderSoft}`, color: C3.paper, fontSize: 13 } })), error && /* @__PURE__ */ import_react5.default.createElement(ErrorBanner, { error }), jobId && job && /* @__PURE__ */ import_react5.default.createElement(ProgressBar, { progress: job.progress, message: job.message }), result && /* @__PURE__ */ import_react5.default.createElement("div", { className: "p-3 rounded", style: { background: C3.panelRaised, border: `1px solid ${C3.cyan}` } }, /* @__PURE__ */ import_react5.default.createElement("span", { style: { fontFamily: F3.mono, fontSize: 11, color: C3.cyan, lineHeight: 1.6 } }, "Selesai! ", /* @__PURE__ */ import_react5.default.createElement("strong", null, result.count, " klip"), " diekstrak ke folder:", /* @__PURE__ */ import_react5.default.createElement("br", null), /* @__PURE__ */ import_react5.default.createElement("span", { style: { color: C3.paper } }, result.output_dir)))), /* @__PURE__ */ import_react5.default.createElement("div", { className: "p-5 flex justify-end gap-3", style: { borderTop: `1px solid ${C3.border}`, background: C3.panel } }, /* @__PURE__ */ import_react5.default.createElement("button", { onClick: onClose, style: { background: "transparent", color: C3.paper, border: "none", fontFamily: F3.body, fontWeight: 600, fontSize: 13, cursor: "pointer" } }, "Tutup"), /* @__PURE__ */ import_react5.default.createElement(PrimaryButton2, { onClick: startExtract, disabled: inputType === "file" && !file || inputType === "youtube" && !youtubeUrl || jobId, loading: !!jobId, icon: Scissors }, "Mulai Ekstrak"))));
+    return /* @__PURE__ */ import_react6.default.createElement("div", { className: "fixed inset-0 z-50 flex justify-end", style: { background: "rgba(0,0,0,0.5)" } }, /* @__PURE__ */ import_react6.default.createElement("div", { className: "w-full max-w-md h-full flex flex-col shadow-2xl", style: { background: C4.bg, borderLeft: `1px solid ${C4.border}`, animation: "slideInRight 0.3s ease-out forwards" } }, /* @__PURE__ */ import_react6.default.createElement("style", null, `@keyframes slideInRight { from { transform: translateX(100%); } to { transform: translateX(0); } }`), /* @__PURE__ */ import_react6.default.createElement("div", { className: "flex items-center justify-between px-5 py-4", style: { background: C4.panel, borderBottom: `1px solid ${C4.border}` } }, /* @__PURE__ */ import_react6.default.createElement("div", { className: "flex items-center gap-3" }, /* @__PURE__ */ import_react6.default.createElement(Scissors, { size: 18, color: C4.tally }), /* @__PURE__ */ import_react6.default.createElement("span", { style: { fontFamily: F4.display, fontSize: 16, fontWeight: 700, color: C4.paper } }, "Ekstrak Footage")), /* @__PURE__ */ import_react6.default.createElement("button", { onClick: onClose, style: { background: "none", border: "none", cursor: "pointer", color: C4.paperDim } }, /* @__PURE__ */ import_react6.default.createElement(X, { size: 20 }))), /* @__PURE__ */ import_react6.default.createElement("div", { className: "p-5 flex flex-col gap-5 overflow-y-auto flex-1" }, /* @__PURE__ */ import_react6.default.createElement("p", { style: { fontFamily: F4.body, fontSize: 13, color: C4.paperDim, lineHeight: 1.5 } }, 'Potong video panjang secara sekuensial. Hasil potongan akan bisa dicari otomatis oleh Tahap 4 berdasarkan "Kata Kunci Footage".'), /* @__PURE__ */ import_react6.default.createElement("div", { className: "flex gap-2 p-1 rounded", style: { background: C4.panel } }, /* @__PURE__ */ import_react6.default.createElement("button", { onClick: () => setInputType("file"), className: "flex-1 py-1.5 rounded", style: { border: "none", cursor: "pointer", background: inputType === "file" ? C4.borderSoft : "transparent", color: inputType === "file" ? C4.paper : C4.paperDim, fontSize: 12, fontWeight: 600 } }, "File Lokal"), /* @__PURE__ */ import_react6.default.createElement("button", { onClick: () => setInputType("youtube"), className: "flex-1 py-1.5 rounded", style: { border: "none", cursor: "pointer", background: inputType === "youtube" ? C4.borderSoft : "transparent", color: inputType === "youtube" ? C4.paper : C4.paperDim, fontSize: 12, fontWeight: 600 } }, "Link YouTube")), /* @__PURE__ */ import_react6.default.createElement("div", { className: "flex flex-col gap-1.5" }, /* @__PURE__ */ import_react6.default.createElement("span", { style: { fontFamily: F4.mono, fontSize: 10, color: C4.paperFaint, letterSpacing: "0.08em" } }, "VIDEO SUMBER"), inputType === "file" ? /* @__PURE__ */ import_react6.default.createElement("div", { className: "flex items-center gap-3 relative" }, /* @__PURE__ */ import_react6.default.createElement("input", { type: "file", accept: "video/mp4,video/webm", onChange: handleFile, className: "absolute inset-0 opacity-0 cursor-pointer" }), /* @__PURE__ */ import_react6.default.createElement("div", { className: "flex-1 px-3 py-2 rounded flex items-center justify-between", style: { background: C4.panel, border: `1px dashed ${C4.borderSoft}` } }, /* @__PURE__ */ import_react6.default.createElement("span", { style: { fontFamily: F4.mono, fontSize: 11, color: file ? C4.cyan : C4.paperDim, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } }, file ? file.name : "Pilih file video (.mp4)..."), /* @__PURE__ */ import_react6.default.createElement(Upload, { size: 14, color: file ? C4.cyan : C4.paperDim }))) : /* @__PURE__ */ import_react6.default.createElement("input", { type: "text", placeholder: "https://www.youtube.com/watch?v=...", value: youtubeUrl, onChange: (e) => setYoutubeUrl(e.target.value), className: "w-full px-3 py-2 rounded", style: { background: C4.panel, border: `1px solid ${C4.borderSoft}`, color: C4.paper, fontSize: 13 } })), /* @__PURE__ */ import_react6.default.createElement("div", { className: "flex flex-col gap-1.5" }, /* @__PURE__ */ import_react6.default.createElement("span", { style: { fontFamily: F4.mono, fontSize: 10, color: C4.paperFaint, letterSpacing: "0.08em" } }, "TOPIK VIDEO (Opsional)"), /* @__PURE__ */ import_react6.default.createElement("input", { type: "text", placeholder: "Misal: Ekonomi IKN", value: topic, onChange: (e) => setTopic(e.target.value), className: "w-full px-3 py-2 rounded", style: { background: C4.panel, border: `1px solid ${C4.borderSoft}`, color: C4.paper, fontSize: 13 } })), error && /* @__PURE__ */ import_react6.default.createElement(ErrorBanner, { error }), jobId && job && /* @__PURE__ */ import_react6.default.createElement(ProgressBar, { progress: job.progress, message: job.message }), result && /* @__PURE__ */ import_react6.default.createElement("div", { className: "p-3 rounded", style: { background: C4.panelRaised, border: `1px solid ${C4.cyan}` } }, /* @__PURE__ */ import_react6.default.createElement("span", { style: { fontFamily: F4.mono, fontSize: 11, color: C4.cyan, lineHeight: 1.6 } }, "Selesai! ", /* @__PURE__ */ import_react6.default.createElement("strong", null, result.count, " klip"), " diekstrak ke folder:", /* @__PURE__ */ import_react6.default.createElement("br", null), /* @__PURE__ */ import_react6.default.createElement("span", { style: { color: C4.paper } }, result.output_dir)))), /* @__PURE__ */ import_react6.default.createElement("div", { className: "p-5 flex justify-end gap-3", style: { borderTop: `1px solid ${C4.border}`, background: C4.panel } }, /* @__PURE__ */ import_react6.default.createElement("button", { onClick: onClose, style: { background: "transparent", color: C4.paper, border: "none", fontFamily: F4.body, fontWeight: 600, fontSize: 13, cursor: "pointer" } }, "Tutup"), /* @__PURE__ */ import_react6.default.createElement(PrimaryButton2, { onClick: startExtract, disabled: inputType === "file" && !file || inputType === "youtube" && !youtubeUrl || jobId, loading: !!jobId, icon: Scissors }, "Mulai Ekstrak"))));
   }
   function Ritme() {
     const [active, setActive] = useStickyState(1, "ritme_active");
     const [maxUnlocked, setMaxUnlocked] = useStickyState(1, "ritme_maxUnlocked");
-    const [showExtractor, setShowExtractor] = (0, import_react5.useState)(false);
-    const [showClipper, setShowClipper] = (0, import_react5.useState)(false);
+    const [showExtractor, setShowExtractor] = (0, import_react6.useState)(false);
+    const [showClipper, setShowClipper] = (0, import_react6.useState)(false);
+    const [showBatch, setShowBatch] = (0, import_react6.useState)(false);
     const [template, setTemplate] = useStickyState(null, "ritme_template");
     const [script, setScript] = useStickyState(null, "ritme_script");
     const [narration, setNarration] = useStickyState(null, "ritme_narration");
     const [footageData, setFootageData] = useStickyState(null, "ritme_footageData");
     const [picks, setPicks] = useStickyState({}, "ritme_picks");
-    const [scriptJobId, setScriptJobId] = (0, import_react5.useState)(null);
+    const [scriptJobId, setScriptJobId] = (0, import_react6.useState)(null);
     const handleReset = () => {
       if (window.confirm("Reset seluruh progress dan mulai project baru?")) {
         setActive(1);
@@ -25481,12 +25705,12 @@ BABAK: ${actLabel}
       setActive(next);
       setMaxUnlocked((m) => Math.max(m, next));
     };
-    return /* @__PURE__ */ import_react5.default.createElement("div", { style: { background: C3.bg, minHeight: "100vh", fontFamily: F3.body } }, /* @__PURE__ */ import_react5.default.createElement("style", null, FONT_IMPORT), /* @__PURE__ */ import_react5.default.createElement("style", null, `.animate-spin { animation: ritme-spin 1s linear infinite; } @keyframes ritme-spin { to { transform: rotate(360deg); } }`), /* @__PURE__ */ import_react5.default.createElement("div", { className: "flex items-center justify-between px-4 sm:px-6 py-4", style: { borderBottom: `1px solid ${C3.border}` } }, /* @__PURE__ */ import_react5.default.createElement("div", { className: "flex items-baseline gap-2.5" }, /* @__PURE__ */ import_react5.default.createElement("span", { style: { fontFamily: F3.display, fontSize: 19, fontWeight: 800, color: C3.paper, letterSpacing: "0.02em" } }, "RITME"), /* @__PURE__ */ import_react5.default.createElement("span", { style: { fontFamily: F3.mono, fontSize: 10, color: C3.paperFaint, letterSpacing: "0.08em" } }, "AUTO-EDIT PIPELINE")), /* @__PURE__ */ import_react5.default.createElement("div", { className: "flex items-center gap-4" }, /* @__PURE__ */ import_react5.default.createElement("button", { onClick: handleReset, className: "flex items-center gap-1.5 px-3 py-1.5 rounded", style: { background: "transparent", border: "none", color: C3.red, cursor: "pointer", opacity: 0.8 }, onMouseEnter: (e) => e.currentTarget.style.opacity = 1, onMouseLeave: (e) => e.currentTarget.style.opacity = 0.8 }, /* @__PURE__ */ import_react5.default.createElement(Trash2, { size: 12 }), /* @__PURE__ */ import_react5.default.createElement("span", { style: { fontFamily: F3.mono, fontSize: 10 } }, "Reset Project")), /* @__PURE__ */ import_react5.default.createElement("button", { onClick: () => setShowExtractor(true), className: "flex items-center gap-1.5 px-3 py-1.5 rounded", style: { background: C3.panel, border: `1px solid ${C3.borderSoft}`, color: C3.paperDim, cursor: "pointer" } }, /* @__PURE__ */ import_react5.default.createElement(Scissors, { size: 12 }), /* @__PURE__ */ import_react5.default.createElement("span", { style: { fontFamily: F3.mono, fontSize: 10 } }, "Footage Extractor")), /* @__PURE__ */ import_react5.default.createElement("button", { onClick: () => setShowClipper(true), className: "flex items-center gap-1.5 px-3 py-1.5 rounded", style: { background: C3.tally, border: "none", color: C3.paper, cursor: "pointer", fontWeight: 600 } }, /* @__PURE__ */ import_react5.default.createElement(Clapperboard, { size: 12 }), /* @__PURE__ */ import_react5.default.createElement("span", { style: { fontFamily: F3.mono, fontSize: 10 } }, "Clipper")), /* @__PURE__ */ import_react5.default.createElement("div", { className: "flex items-center gap-1.5" }, /* @__PURE__ */ import_react5.default.createElement("div", { style: { width: 6, height: 6, borderRadius: "50%", background: C3.tally } }), /* @__PURE__ */ import_react5.default.createElement("span", { style: { fontFamily: F3.mono, fontSize: 10, color: C3.paperDim } }, "REC")))), showExtractor && /* @__PURE__ */ import_react5.default.createElement(FootageExtractorTool, { onClose: () => setShowExtractor(false) }), showClipper && /* @__PURE__ */ import_react5.default.createElement(ClipperTool, { onClose: () => setShowClipper(false) }), /* @__PURE__ */ import_react5.default.createElement(StageNav, { active, setActive, maxUnlocked }), /* @__PURE__ */ import_react5.default.createElement("div", { className: "px-4 sm:px-6 py-6 max-w-3xl mx-auto" }, active === 1 && /* @__PURE__ */ import_react5.default.createElement(StageTemplate, { template, setTemplate, onNext: goNext }), active === 2 && template && /* @__PURE__ */ import_react5.default.createElement(StageScript, { template, script, setScript, onNext: goNext, onScriptJob: setScriptJobId }), active === 3 && script && /* @__PURE__ */ import_react5.default.createElement(StageNarration, { script, narration, setNarration, onNext: goNext }), active === 4 && narration && /* @__PURE__ */ import_react5.default.createElement(StageFootage, { narration, footageData, setFootageData, picks, setPicks, onNext: goNext, scriptJobId }), active === 5 && narration && footageData && /* @__PURE__ */ import_react5.default.createElement(TimelineEditor_default, { narration, footageData, picks })), /* @__PURE__ */ import_react5.default.createElement("div", { className: "px-4 sm:px-6 py-4 text-center", style: { borderTop: `1px solid ${C3.border}` } }, /* @__PURE__ */ import_react5.default.createElement("span", { style: { fontFamily: F3.mono, fontSize: 10, color: C3.paperFaint, letterSpacing: "0.04em" } }, "Footage legal only \u2014 tidak ada ripped content, tidak ada slicing buat ngakalin Content ID.")));
+    return /* @__PURE__ */ import_react6.default.createElement("div", { style: { background: C4.bg, minHeight: "100vh", fontFamily: F4.body } }, /* @__PURE__ */ import_react6.default.createElement("style", null, FONT_IMPORT), /* @__PURE__ */ import_react6.default.createElement("style", null, `.animate-spin { animation: ritme-spin 1s linear infinite; } @keyframes ritme-spin { to { transform: rotate(360deg); } }`), /* @__PURE__ */ import_react6.default.createElement("div", { className: "flex items-center justify-between px-4 sm:px-6 py-4", style: { borderBottom: `1px solid ${C4.border}` } }, /* @__PURE__ */ import_react6.default.createElement("div", { className: "flex items-baseline gap-2.5" }, /* @__PURE__ */ import_react6.default.createElement("span", { style: { fontFamily: F4.display, fontSize: 19, fontWeight: 800, color: C4.paper, letterSpacing: "0.02em" } }, "RITME"), /* @__PURE__ */ import_react6.default.createElement("span", { style: { fontFamily: F4.mono, fontSize: 10, color: C4.paperFaint, letterSpacing: "0.08em" } }, "AUTO-EDIT PIPELINE")), /* @__PURE__ */ import_react6.default.createElement("div", { className: "flex items-center gap-4" }, /* @__PURE__ */ import_react6.default.createElement("button", { onClick: handleReset, className: "flex items-center gap-1.5 px-3 py-1.5 rounded", style: { background: "transparent", border: "none", color: C4.red, cursor: "pointer", opacity: 0.8 }, onMouseEnter: (e) => e.currentTarget.style.opacity = 1, onMouseLeave: (e) => e.currentTarget.style.opacity = 0.8 }, /* @__PURE__ */ import_react6.default.createElement(Trash2, { size: 12 }), /* @__PURE__ */ import_react6.default.createElement("span", { style: { fontFamily: F4.mono, fontSize: 10 } }, "Reset Project")), /* @__PURE__ */ import_react6.default.createElement("button", { onClick: () => setShowExtractor(true), className: "flex items-center gap-1.5 px-3 py-1.5 rounded", style: { background: C4.panel, border: `1px solid ${C4.borderSoft}`, color: C4.paperDim, cursor: "pointer" } }, /* @__PURE__ */ import_react6.default.createElement(Scissors, { size: 12 }), /* @__PURE__ */ import_react6.default.createElement("span", { style: { fontFamily: F4.mono, fontSize: 10 } }, "Footage Extractor")), /* @__PURE__ */ import_react6.default.createElement("button", { onClick: () => setShowClipper(true), className: "flex items-center gap-1.5 px-3 py-1.5 rounded", style: { background: C4.tally, border: "none", color: C4.paper, cursor: "pointer", fontWeight: 600 } }, /* @__PURE__ */ import_react6.default.createElement(Clapperboard, { size: 12 }), /* @__PURE__ */ import_react6.default.createElement("span", { style: { fontFamily: F4.mono, fontSize: 10 } }, "Clipper")), /* @__PURE__ */ import_react6.default.createElement("button", { onClick: () => setShowBatch(true), className: "flex items-center gap-1.5 px-3 py-1.5 rounded", style: { background: C4.panel, border: `1px solid ${C4.borderSoft}`, color: C4.paperDim, cursor: "pointer" } }, /* @__PURE__ */ import_react6.default.createElement(Layers, { size: 12 }), /* @__PURE__ */ import_react6.default.createElement("span", { style: { fontFamily: F4.mono, fontSize: 10 } }, "Batch Render")), /* @__PURE__ */ import_react6.default.createElement("div", { className: "flex items-center gap-1.5" }, /* @__PURE__ */ import_react6.default.createElement("div", { style: { width: 6, height: 6, borderRadius: "50%", background: C4.tally } }), /* @__PURE__ */ import_react6.default.createElement("span", { style: { fontFamily: F4.mono, fontSize: 10, color: C4.paperDim } }, "REC")))), showExtractor && /* @__PURE__ */ import_react6.default.createElement(FootageExtractorTool, { onClose: () => setShowExtractor(false) }), showClipper && /* @__PURE__ */ import_react6.default.createElement(ClipperTool, { onClose: () => setShowClipper(false) }), showBatch && /* @__PURE__ */ import_react6.default.createElement(BatchRenderTool, { onClose: () => setShowBatch(false) }), /* @__PURE__ */ import_react6.default.createElement(StageNav, { active, setActive, maxUnlocked }), /* @__PURE__ */ import_react6.default.createElement("div", { className: "px-4 sm:px-6 py-6 max-w-3xl mx-auto" }, active === 1 && /* @__PURE__ */ import_react6.default.createElement(StageTemplate, { template, setTemplate, onNext: goNext }), active === 2 && template && /* @__PURE__ */ import_react6.default.createElement(StageScript, { template, script, setScript, onNext: goNext, onScriptJob: setScriptJobId }), active === 3 && script && /* @__PURE__ */ import_react6.default.createElement(StageNarration, { script, narration, setNarration, onNext: goNext }), active === 4 && narration && /* @__PURE__ */ import_react6.default.createElement(StageFootage, { narration, footageData, setFootageData, picks, setPicks, onNext: goNext, scriptJobId }), active === 5 && narration && footageData && /* @__PURE__ */ import_react6.default.createElement(TimelineEditor_default, { narration, footageData, picks })), /* @__PURE__ */ import_react6.default.createElement("div", { className: "px-4 sm:px-6 py-4 text-center", style: { borderTop: `1px solid ${C4.border}` } }, /* @__PURE__ */ import_react6.default.createElement("span", { style: { fontFamily: F4.mono, fontSize: 10, color: C4.paperFaint, letterSpacing: "0.04em" } }, "Footage legal only \u2014 tidak ada ripped content, tidak ada slicing buat ngakalin Content ID.")));
   }
 
   // entry.jsx
   var root = (0, import_client.createRoot)(document.getElementById("root"));
-  root.render(/* @__PURE__ */ import_react6.default.createElement(Ritme, null));
+  root.render(/* @__PURE__ */ import_react7.default.createElement(Ritme, null));
 })();
 /*! Bundled license information:
 
@@ -25551,6 +25775,7 @@ lucide-react/dist/esm/icons/file-text.js:
 lucide-react/dist/esm/icons/film.js:
 lucide-react/dist/esm/icons/grip-vertical.js:
 lucide-react/dist/esm/icons/info.js:
+lucide-react/dist/esm/icons/layers.js:
 lucide-react/dist/esm/icons/link-2.js:
 lucide-react/dist/esm/icons/loader-circle.js:
 lucide-react/dist/esm/icons/lock.js:

@@ -811,6 +811,94 @@ def test_clipper():
         check("ssrf blocked", r.status_code == 400, f"status={r.status_code}")
 
 
+def test_multi_voice():
+    print("\n[5.1] Multi-voice per segmen (voices endpoint + generate)")
+    import server as server_mod
+    from fastapi.testclient import TestClient
+    with TestClient(server_mod.app) as client:
+        r = client.get("/api/narration/voices?provider=pyttsx3")
+        check("voices 200", r.status_code == 200, f"status={r.status_code}")
+        vs = r.json().get("voices", [])
+        check("voices list non-empty", len(vs) > 0, f"got {len(vs)}")
+        if vs:
+            check("voice has id", bool(vs[0].get("id")), f"{vs[0]}")
+        # generate dengan voices (2 segmen, segmen 1 pakai voice tertentu)
+        voices_arg = [vs[0]["id"], ""] if vs else ["", ""]
+        r = client.post("/api/narration/generate", json={
+            "segments": [{"text": "Satu dua tiga empat lima"}, {"text": "Enam tujuh delapan sembilan"}],
+            "tts_provider": "pyttsx3", "voices": voices_arg,
+        })
+        check("generate with voices 200", r.status_code == 200, f"status={r.status_code}")
+        jid = r.json().get("job_id")
+        # poll sebentar — kalau selesai, cek result shape
+        if jid:
+            import time
+            for _ in range(30):
+                j = client.get(f"/api/jobs/{jid}").json()
+                if j["status"] in ("done", "error"):
+                    break
+                time.sleep(0.5)
+            check("generate done", j["status"] == "done", f"status={j['status']} err={j.get('error')}")
+            if j["status"] == "done":
+                res = j["result"]
+                check("has segment_audio_paths", len(res.get("segment_audio_paths", [])) == 2)
+                check("has audio_url", bool(res.get("audio_url")))
+
+
+def test_watermark():
+    print("\n[5.2] Watermark upload + render with overlay")
+    import server as server_mod
+    from fastapi.testclient import TestClient
+    from PIL import Image
+    v = make_test_video(Path("cache") / "test" / "wm_src.mp4", "blue", 4.0)
+    wm = Path("cache") / "test" / "wm.png"
+    Image.new("RGBA", (200, 80), (232, 84, 46, 255)).save(wm)
+    with TestClient(server_mod.app) as client:
+        r = client.post("/api/watermark/upload", files={"image": ("logo.png", open(wm, "rb"), "image/png")})
+        check("watermark upload 200", r.status_code == 200 and bool(r.json().get("watermark_path")))
+        wm_path = r.json()["watermark_path"]
+        r = client.post("/api/watermark/upload", files={"image": ("bad.txt", b"x", "text/plain")})
+        check("watermark invalid ext rejected", r.status_code == 400, f"status={r.status_code}")
+        seg = [{"index": 0, "video_path": str(v), "narration_text": "Tes", "start_trim": 0, "end_trim": 0,
+                "duration": 3.0, "keywords": [], "audio_path": "", "words": []}]
+        r = client.post("/api/timeline/export", json={
+            "segments": seg, "output_name": "wm_render", "watermark_path": wm_path,
+            "watermark_pos": "bottom-right", "caption_style": "minimal-white-center",
+            "transition_style": "hard_cut",
+        })
+        check("export with watermark 200", r.status_code == 200, f"status={r.status_code}")
+        check("has X-Render-Path", bool(r.headers.get("X-Render-Path")))
+
+
+def test_batch_render():
+    print("\n[5.3] Batch render (2 items sequential + validation)")
+    import server as server_mod
+    from fastapi.testclient import TestClient
+    v = make_test_video(Path("cache") / "test" / "batch_src.mp4", "green", 4.0)
+    seg = [{"index": 0, "video_path": str(v), "narration_text": "Batch", "start_trim": 0, "end_trim": 0,
+            "duration": 3.0, "keywords": [], "audio_path": "", "words": []}]
+    item = {"name": "batch_item_a", "segments": seg, "caption_style": "minimal-white-center",
+            "transition_style": "hard_cut"}
+    with TestClient(server_mod.app) as client:
+        r = client.post("/api/batch/render", json={"items": []})
+        check("empty batch -> 400", r.status_code == 400, f"status={r.status_code}")
+        r = client.post("/api/batch/render", json={"items": [item, item]})
+        check("batch start 200", r.status_code == 200, f"status={r.status_code}")
+        jid = r.json()["job_id"]
+        import time
+        for _ in range(150):
+            j = client.get(f"/api/jobs/{jid}").json()
+            if j["status"] in ("done", "error"):
+                break
+            time.sleep(1)
+        check("batch done", j["status"] == "done", f"status={j['status']} err={j.get('error')}")
+        if j["status"] == "done":
+            items = j["result"]["items"]
+            check("2 items returned", len(items) == 2, f"got {len(items)}")
+            check("all items ok", all(i["status"] == "ok" for i in items), f"{items}")
+            check("items have url", all(i.get("url") for i in items))
+
+
 def main():
     which = set(sys.argv[1:])
     run_all = "--all" in which or len(which) == 0
@@ -828,6 +916,9 @@ def main():
         ("per_segment_audio_30", test_fase3_per_segment_audio),
         ("srt_export", test_fase4_srt_export),
         ("clipper", test_clipper),
+        ("multi_voice", test_multi_voice),
+        ("watermark", test_watermark),
+        ("batch_render", test_batch_render),
     ]
     if run_all or "--with-server" in which:
         tests.append(("server_render", test_server_render_endpoint))

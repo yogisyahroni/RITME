@@ -88,13 +88,14 @@ def synthesize_narration(script_segments: list[dict], out_path: str | None = Non
     return out_path
 
 
-def _synthesize_text(text: str, out_path: str, provider: str, lang: str) -> None:
+def _synthesize_text(text: str, out_path: str, provider: str, lang: str, voice: str | None = None) -> None:
     """Route a single text through the configured TTS provider. Shared by the
-    full-narration and per-segment paths (Fase 3.0) so both behave identically."""
+    full-narration and per-segment paths (Fase 3.0) so both behave identically.
+    `voice` (provider-specific id) enables multi-voice per segment (Fase 5.1)."""
     if provider == "pyttsx3":
-        _synthesize_pyttsx3(text, out_path)
+        _synthesize_pyttsx3(text, out_path, voice)
     elif provider == "elevenlabs":
-        _synthesize_elevenlabs(text, out_path)
+        _synthesize_elevenlabs(text, out_path, voice)
     elif provider == "xtts":
         # XTTS v2 does not support Bahasa Indonesia — fall back to English with a warning
         if lang == "id":
@@ -179,12 +180,13 @@ def audio_duration(path: str) -> float:
         return 0.0
 
 
-def synthesize_narration_per_segment(script_segments: list[dict], out_dir: str | None = None, provider: str | None = None) -> tuple[list[str], list[float]]:
+def synthesize_narration_per_segment(script_segments: list[dict], out_dir: str | None = None, provider: str | None = None, voices: list[str] | None = None) -> tuple[list[str], list[float]]:
     """
     Fase 3.0: synthesize each segment's text into its own audio file so the
     timeline can move/trim/regenerate segments independently. Returns
     (audio_paths, durations_sec) aligned to script_segments order. A segment
     with empty text yields ("", 0.0) at its position.
+    `voices` (Fase 5.1): per-segment TTS voice id (None/"" = default provider voice).
     """
     out_dir = Path(out_dir or (AUDIO_CACHE_DIR / "segments"))
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -202,11 +204,12 @@ def synthesize_narration_per_segment(script_segments: list[dict], out_dir: str |
         if not t.endswith(('.', '!', '?')):
             t += "."
         out_path = str(out_dir / f"segment_{i + 1:03d}.wav")
-        _synthesize_text(t, out_path, provider, lang)
+        voice = (voices[i] if voices and i < len(voices) and voices[i] else None)
+        _synthesize_text(t, out_path, provider, lang, voice)
         d = audio_duration(out_path)
         paths.append(out_path)
         durations.append(d)
-        print(f"[stage3] Segment {i + 1}: {d:.2f}s -> {out_path}")
+        print(f"[stage3] Segment {i + 1}: {d:.2f}s ({voice or 'default'}) -> {out_path}")
     return paths, durations
 
 
@@ -232,7 +235,41 @@ def concat_audio_files(paths: list[str], out_path: str) -> str:
         raise RuntimeError(f"concat_audio_files failed: {e}") from e
 
 
-def _synthesize_pyttsx3(text: str, out_path: str) -> None:
+def list_available_voices(provider: str | None = None) -> list[dict]:
+    """
+    Multi-voice: enumerasi voice yang tersedia untuk provider tertentu.
+    Returns [{id, name, lang}] — dipakai UI dropdown per segmen.
+    """
+    provider = (provider or TTS_PROVIDER).lower()
+    voices: list[dict] = []
+    try:
+        if provider == "pyttsx3":
+            import pyttsx3
+            engine = pyttsx3.init()
+            for v in engine.getProperty("voices"):
+                voices.append({"id": v.id, "name": v.name, "lang": getattr(v, "languages", [""])[0] if getattr(v, "languages", []) else ""})
+            engine.stop()
+        elif provider == "elevenlabs":
+            require(ELEVENLABS_API_KEY, "ELEVENLABS_API_KEY", "https://elevenlabs.io/app/settings/api-keys")
+            import requests
+            resp = requests.get("https://api.elevenlabs.io/v1/voices",
+                                headers={"xi-api-key": ELEVENLABS_API_KEY}, timeout=30)
+            resp.raise_for_status()
+            for v in resp.json().get("voices", []):
+                voices.append({"id": v["voice_id"], "name": v["name"], "lang": ""})
+        elif provider == "xtts":
+            voices = [{"id": "default", "name": "XTTS v2 (Default)", "lang": "en"}]
+        elif provider == "f5tts":
+            voices = [{"id": "id", "name": "F5-TTS (Bahasa Indonesia)", "lang": "id"},
+                      {"id": "en", "name": "F5-TTS (English)", "lang": "en"}]
+        elif provider == "omnivoice":
+            voices = [{"id": "default", "name": "OmniVoice (Default)", "lang": "id"}]
+    except Exception as e:
+        print(f"[stage3] list_available_voices error: {e}")
+    return voices
+
+
+def _synthesize_pyttsx3(text: str, out_path: str, voice: str | None = None) -> None:
     """Free, fully offline TTS. Quality is robotic — good for drafts/testing."""
     try:
         import pyttsx3
@@ -240,17 +277,20 @@ def _synthesize_pyttsx3(text: str, out_path: str) -> None:
         raise RuntimeError("Run: pip install pyttsx3")
 
     engine = pyttsx3.init()
+    if voice:
+        engine.setProperty("voice", voice)
     engine.save_to_file(text, out_path)
     engine.runAndWait()
 
 
-def _synthesize_elevenlabs(text: str, out_path: str) -> None:
+def _synthesize_elevenlabs(text: str, out_path: str, voice: str | None = None) -> None:
     """Paid, natural-sounding TTS via ElevenLabs API."""
     require(ELEVENLABS_API_KEY, "ELEVENLABS_API_KEY",
             "Get one at https://elevenlabs.io/app/settings/api-keys")
     import requests
 
-    url = f"https://api.elevenlabs.io/v1/text-to-speech/{ELEVENLABS_VOICE_ID}"
+    voice_id = voice or ELEVENLABS_VOICE_ID
+    url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
     headers = {"xi-api-key": ELEVENLABS_API_KEY, "Content-Type": "application/json"}
     payload = {"text": text, "model_id": "eleven_multilingual_v2"}
 

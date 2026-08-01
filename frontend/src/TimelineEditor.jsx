@@ -77,7 +77,24 @@ function TimelineEditor({ narration, footageData, picks }) {
     caption_style: "minimal-white-center",
     transition_style: "hard_cut",
     ken_burns: false,
+    watermark_path: "",
+    watermark_name: "",
+    watermark_pos: "bottom-right",
   });
+  const wmRef = useRef(null);
+
+  const onWatermarkFile = async (e) => {
+    const f = e.target.files && e.target.files[0];
+    if (!f) return;
+    try {
+      const fd = new FormData();
+      fd.append("image", f);
+      const res = await fetch("/api/watermark/upload", { method: "POST", body: fd });
+      if (!res.ok) throw new Error("Upload watermark gagal");
+      const data = await res.json();
+      setFinishing(prev => ({ ...prev, watermark_path: data.watermark_path, watermark_name: f.name }));
+    } catch (err) { setError(String(err)); }
+  };
   const videoRef = useRef(null);
   const cancelRef = useRef(null);
   const firstRunRef = useRef(true);
@@ -378,6 +395,8 @@ function TimelineEditor({ narration, footageData, picks }) {
         caption_style: finishing.caption_style,
         transition_style: finishing.transition_style,
         ken_burns: finishing.ken_burns,
+        watermark_path: finishing.watermark_path || null,
+        watermark_pos: finishing.watermark_pos,
       };
       const resp = await fetch(endpoint, {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)
@@ -691,6 +710,26 @@ function TimelineEditor({ narration, footageData, picks }) {
             <input type="checkbox" checked={finishing.ken_burns} onChange={e => setFinishing({ ...finishing, ken_burns: e.target.checked })} style={{ accentColor: C.tally }} />
             <span style={{ fontFamily: F.body, fontSize: 12, color: C.paper }}>Ken Burns (zoom pelan)</span>
           </label>
+          <div className="flex items-center gap-2 flex-wrap">
+            <span style={{ fontFamily: F.mono, fontSize: 10, color: C.paperFaint }}>Watermark</span>
+            {finishing.watermark_name ? (
+              <>
+                <button onClick={() => wmRef.current?.click()} className="px-2.5 py-1 rounded" style={{ fontFamily: F.mono, fontSize: 11, color: C.cyan, background: C.panelRaised, border: `1px solid ${C.border}`, cursor: "pointer" }}>🖼 {finishing.watermark_name}</button>
+                <button onClick={() => setFinishing(f => ({ ...f, watermark_path: "", watermark_name: "" }))} className="px-2 py-1 rounded" style={{ fontFamily: F.mono, fontSize: 11, color: C.red, background: "none", border: "none", cursor: "pointer" }}>✕</button>
+              </>
+            ) : (
+              <button onClick={() => wmRef.current?.click()} className="px-2.5 py-1 rounded" style={{ fontFamily: F.mono, fontSize: 11, color: C.paperDim, background: C.panelRaised, border: `1px solid ${C.border}`, cursor: "pointer" }}>+ Logo</button>
+            )}
+            <input ref={wmRef} type="file" accept="image/*" style={{ display: "none" }} onChange={onWatermarkFile} />
+            <select value={finishing.watermark_pos} onChange={e => setFinishing({ ...finishing, watermark_pos: e.target.value })} disabled={!finishing.watermark_path}
+              style={{ fontFamily: F.mono, fontSize: 11, color: C.paper, background: C.panelRaised, border: `1px solid ${C.border}`, borderRadius: 3, padding: "3px 6px", outline: "none" }}>
+              <option value="bottom-right">Bawah Kanan</option>
+              <option value="bottom-left">Bawah Kiri</option>
+              <option value="top-right">Atas Kanan</option>
+              <option value="top-left">Atas Kiri</option>
+              <option value="center">Tengah</option>
+            </select>
+          </div>
         </div>
       </div>
 

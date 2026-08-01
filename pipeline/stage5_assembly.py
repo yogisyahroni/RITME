@@ -31,6 +31,7 @@ renamed to `with_x()`; `resize`/`crop`/`subclip` were renamed to
 NOTE at the bottom of this file for the equivalent calls.
 """
 from pathlib import Path
+import os
 
 from moviepy import (
     VideoFileClip, AudioFileClip, concatenate_videoclips,
@@ -228,7 +229,9 @@ def assemble_video(timed_segments: list[dict], footage_map: dict[int, dict],
                     ken_burns: bool | None = None,
                     resolution: tuple[int, int] | None = None,
                     ffmpeg_preset: str = "medium",
-                    segment_audio_paths: list[str] | None = None) -> str:
+                    segment_audio_paths: list[str] | None = None,
+                    watermark_path: str | None = None,
+                    watermark_pos: str = "bottom-right") -> str:
     """
     timed_segments: output of Stage 3 (align_keywords_to_timestamps)
     footage_map: {segment_index: {"video_path": ..., ...}} from Stage 4
@@ -401,13 +404,18 @@ def assemble_video(timed_segments: list[dict], footage_map: dict[int, dict],
             seg_clips.append(a)
         if seg_clips:
             narration_audio = CompositeAudioClip(seg_clips).with_duration(full_video.duration)
-        else:
+        elif narration_audio_path and Path(narration_audio_path).exists():
             narration_audio = AudioFileClip(narration_audio_path)
             narration_audio = narration_audio.subclipped(0, min(narration_audio.duration, full_video.duration))
-    else:
+        else:
+            narration_audio = None
+    elif narration_audio_path and Path(narration_audio_path).exists():
         narration_audio = AudioFileClip(narration_audio_path)
         narration_audio = narration_audio.subclipped(0, min(narration_audio.duration, full_video.duration))
-    full_video = full_video.with_audio(narration_audio)
+    else:
+        narration_audio = None
+    if narration_audio is not None:
+        full_video = full_video.with_audio(narration_audio)
 
     # ---- Background music + auto-ducking (Fase 1.2) -----------------------
     if music_on:
@@ -439,7 +447,30 @@ def assemble_video(timed_segments: list[dict], footage_map: dict[int, dict],
         except Exception as e:
             print(f"[stage5] Music skipped ({e}) — continuing narration-only.")
 
-    final = CompositeVideoClip([full_video, *caption_layers], size=(target_w, target_h))
+    watermark_layers = []
+    if watermark_path and os.path.exists(watermark_path):
+        try:
+            from PIL import Image as PILImage
+            wm = ImageClip(watermark_path).with_duration(full_video.duration)
+            # cap ukuran logo ~12% lebar canvas, pertahankan aspect
+            wm_w, wm_h = PILImage.open(watermark_path).size
+            max_w = int(target_w * 0.12)
+            scale = max_w / wm_w if wm_w > max_w else 1.0
+            wm = wm.resized(max_w, int(wm_h * scale)) if scale != 1.0 else wm
+            margin = int(target_w * 0.02)
+            pos_map = {
+                "top-left": (margin, margin),
+                "top-right": ("right", margin),
+                "bottom-left": (margin, "bottom"),
+                "bottom-right": ("right", "bottom"),
+                "center": ("center", "center"),
+            }
+            wm = wm.with_position(pos_map.get(watermark_pos, ("right", "bottom")))
+            watermark_layers.append(wm)
+        except Exception as e:
+            print(f"[stage5] Watermark skipped ({e})")
+
+    final = CompositeVideoClip([full_video, *watermark_layers, *caption_layers], size=(target_w, target_h))
 
     if on_progress:
         on_progress(20, "Rendering (ffmpeg encode)…")

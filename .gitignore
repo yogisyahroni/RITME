@@ -23,6 +23,7 @@ venv_311/
 cache/footage/
 cache/audio/
 cache/uploads/
+cache/test/
 output/
 outputs/
 

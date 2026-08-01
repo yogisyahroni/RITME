@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import TimelineEditor from "./TimelineEditor.jsx";
 import ClipperTool from "./ClipperTool.jsx";
+import BatchRenderTool from "./BatchRenderTool.jsx";
 import {
   Film, FileText, Mic, ScanSearch, Clapperboard,
   Check, Lock, RefreshCw, Download, Info, ChevronRight, Play,
-  Upload, AlertTriangle, X, Plus, Loader2, Scissors, Trash2
+  Upload, AlertTriangle, X, Plus, Loader2, Scissors, Trash2, Layers
 } from "lucide-react";
 
 /* ============================================================
@@ -808,9 +809,24 @@ function StageNarration({ script, narration, setNarration, onNext }) {
   const [error, setError] = useState(null);
   const [waveform, setWaveform] = useState(null);
   const [audioFile, setAudioFile] = useState(null);
+  const [voices, setVoices] = useState([]);        // Fase 5.1: daftar voice provider
+  const [perSegVoices, setPerSegVoices] = useState({}); // segIdx -> voice id
   const cancelRef = useRef(null);
 
   useEffect(() => () => cancelRef.current && cancelRef.current(), []);
+
+  // Fase 5.1: ambil daftar voice saat provider TTS berubah
+  useEffect(() => {
+    if (ttsProvider === "upload") { setVoices([]); return; }
+    let cancelled = false;
+    fetch(`/api/narration/voices?provider=${encodeURIComponent(ttsProvider)}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (!cancelled && data) setVoices(data.voices || []); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [ttsProvider]);
+
+  const pickVoice = (i, vid) => setPerSegVoices(prev => ({ ...prev, [i]: vid }));
 
   useEffect(() => {
     if (narration?.audio_url) {
@@ -844,6 +860,7 @@ function StageNarration({ script, narration, setNarration, onNext }) {
       } else {
         const data = await apiPostJSON("/api/narration/generate", {
           segments: script.segments, tts_provider: ttsProvider,
+          voices: script.segments.map((_, i) => perSegVoices[i] || ""),
         });
         job_id = data.job_id;
       }
@@ -887,6 +904,25 @@ function StageNarration({ script, narration, setNarration, onNext }) {
             <div className="flex flex-col gap-2 p-4 rounded" style={{ background: "rgba(255,255,255,0.02)", border: `1px dashed ${C.borderSoft}` }}>
               <label style={{ fontFamily: F.body, fontSize: 13, color: C.paperDim }}>Pilih file rekaman suara Anda (.wav, .mp3, .m4a)</label>
               <input type="file" accept="audio/*" onChange={(e) => setAudioFile(e.target.files[0])} style={{ color: C.paper }} />
+            </div>
+          )}
+          {ttsProvider !== "upload" && voices.length > 0 && script.segments.length > 0 && (
+            <div className="flex flex-col gap-2 p-4 rounded" style={{ background: "rgba(255,255,255,0.02)", border: `1px solid ${C.borderSoft}` }}>
+              <span style={{ fontFamily: F.mono, fontSize: 10, color: C.amber, letterSpacing: "0.08em" }}>MULTI-VOICE · suara per segmen</span>
+              <div className="flex flex-col gap-1.5">
+                {script.segments.map((seg, i) => (
+                  <div key={i} className="flex items-center gap-3">
+                    <span style={{ fontFamily: F.mono, fontSize: 10.5, color: C.paperFaint, width: 64, flexShrink: 0 }}>Seg {i + 1}</span>
+                    <select value={perSegVoices[i] || ""} onChange={e => pickVoice(i, e.target.value)}
+                      style={{ flex: 1, fontFamily: F.body, fontSize: 12, color: C.paper, background: C.panel, border: `1px solid ${C.borderSoft}`, borderRadius: 6, padding: "6px 8px", outline: "none" }}>
+                      <option value="">Default ({voices[0]?.name || "auto"})</option>
+                      {voices.map(v => <option key={v.id} value={v.id}>{v.name}{v.lang ? ` · ${v.lang}` : ""}</option>)}
+                    </select>
+                    <span style={{ fontFamily: F.body, fontSize: 11, color: C.paperFaint, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 220 }}>{seg.text}</span>
+                  </div>
+                ))}
+              </div>
+              <span style={{ fontFamily: F.body, fontSize: 11, color: C.paperFaint }}>Kosongkan = default. Bisa beda suara tiap segmen (skit/dialog/narrator).</span>
             </div>
           )}
           {error && <ErrorBanner error={error} onRetry={runGenerate} />}
@@ -1354,6 +1390,7 @@ export default function Ritme() {
   const [maxUnlocked, setMaxUnlocked] = useStickyState(1, "ritme_maxUnlocked");
   const [showExtractor, setShowExtractor] = useState(false);
   const [showClipper, setShowClipper] = useState(false);
+  const [showBatch, setShowBatch] = useState(false);
 
   const [template, setTemplate] = useStickyState(null, "ritme_template");
   const [script, setScript] = useStickyState(null, "ritme_script");
@@ -1406,6 +1443,10 @@ export default function Ritme() {
             <Clapperboard size={12} />
             <span style={{ fontFamily: F.mono, fontSize: 10 }}>Clipper</span>
           </button>
+          <button onClick={() => setShowBatch(true)} className="flex items-center gap-1.5 px-3 py-1.5 rounded" style={{ background: C.panel, border: `1px solid ${C.borderSoft}`, color: C.paperDim, cursor: "pointer" }}>
+            <Layers size={12} />
+            <span style={{ fontFamily: F.mono, fontSize: 10 }}>Batch Render</span>
+          </button>
           <div className="flex items-center gap-1.5">
             <div style={{ width: 6, height: 6, borderRadius: "50%", background: C.tally }} />
             <span style={{ fontFamily: F.mono, fontSize: 10, color: C.paperDim }}>REC</span>
@@ -1415,6 +1456,7 @@ export default function Ritme() {
       
       {showExtractor && <FootageExtractorTool onClose={() => setShowExtractor(false)} />}
       {showClipper && <ClipperTool onClose={() => setShowClipper(false)} />}
+      {showBatch && <BatchRenderTool onClose={() => setShowBatch(false)} />}
 
       <StageNav active={active} setActive={setActive} maxUnlocked={maxUnlocked} />
 

@@ -294,6 +294,17 @@ async def generate_script_with_footage(
 class NarrationRequest(BaseModel):
     segments: list[dict]  # [{text, keywords}, ...] from stage 2
     tts_provider: str | None = None  # "pyttsx3" | "elevenlabs" | None (use .env default)
+    voices: list[str] | None = None  # Fase 5.1: per-segment TTS voice id
+
+
+@app.get("/api/narration/voices")
+def narration_voices(provider: str | None = None):
+    """Fase 5.1: daftar voice tersedia untuk provider TTS (dropdown per segmen)."""
+    try:
+        return {"provider": provider or stage3_narration.TTS_PROVIDER,
+                "voices": stage3_narration.list_available_voices(provider)}
+    except Exception as e:
+        raise HTTPException(500, f"Gagal memuat daftar voice: {e}")
 
 
 @app.post("/api/narration/generate")
@@ -310,7 +321,7 @@ def generate_narration(req: NarrationRequest):
         # timeline clip), then rebuild the full track by concatenation so the
         # whisper transcription & music ducking still see one continuous audio.
         seg_paths, seg_durs = stage3_narration.synthesize_narration_per_segment(
-            req.segments, provider=req.tts_provider)
+            req.segments, provider=req.tts_provider, voices=req.voices)
         if all(seg_paths):
             try:
                 audio_path = stage3_narration.concat_audio_files(
@@ -688,6 +699,73 @@ class TimelineExportRequest(BaseModel):
     caption_style: str = "minimal-white-center"
     transition_style: str = "hard_cut"   # "hard_cut" | "crossfade"
     ken_burns: bool = False
+    # --- Watermark (Fase 5.2): logo overlay ---
+    watermark_path: str | None = None
+    watermark_pos: str = "bottom-right"
+
+
+class BatchItem(BaseModel):
+    name: str = "batch_item"
+    segments: list[TimelineSegment]
+    narration_audio_path: str = ""
+    template_name: str = ""
+    add_music: bool = False
+    music_mood: str | None = None
+    caption_style: str = "minimal-white-center"
+    transition_style: str = "hard_cut"
+    ken_burns: bool = False
+    watermark_path: str | None = None
+    watermark_pos: str = "bottom-right"
+
+
+class BatchRenderRequest(BaseModel):
+    items: list[BatchItem]
+
+
+@app.post("/api/batch/render")
+def batch_render(req: BatchRenderRequest):
+    """Fase 5.3: render banyak project berurutan dalam satu job.
+    Setiap item pakai pipeline yang sama dengan /api/timeline/export.
+    Progress global = rata-rata per-item; result = daftar per-item."""
+    if not req.items:
+        raise HTTPException(400, "Tidak ada item untuk dirender")
+    if len(req.items) > 10:
+        raise HTTPException(400, "Maksimal 10 project per batch")
+    job_id = job_manager.create()
+    total = len(req.items)
+
+    def _run(job_id):
+        results = []
+        for idx, item in enumerate(req.items):
+            job_manager.update(
+                job_id, progress=round(idx / total * 100), message=f"Render {idx + 1}/{total}: {item.name}")
+            entry = {"name": item.name, "status": "ok", "url": "", "path": "", "error": ""}
+            try:
+                timed, footage = _timeline_to_stage5(item.segments)
+                if not timed:
+                    raise RuntimeError("Tidak ada segmen video valid")
+                template = _load_timeline_template(item.template_name)
+                out = stage5_assembly.assemble_video(
+                    timed, footage, item.narration_audio_path, template,
+                    output_name=_safe_output_name(item.name),
+                    add_music=item.add_music, music_mood=item.music_mood,
+                    caption_style=item.caption_style,
+                    transition_style=item.transition_style,
+                    ken_burns=item.ken_burns,
+                    watermark_path=item.watermark_path, watermark_pos=item.watermark_pos,
+                )
+                entry["path"] = out
+                rel = str(Path(out).relative_to(OUTPUT_DIR))
+                entry["url"] = f"/outputs/render/{rel}"
+            except Exception as e:
+                entry["status"] = "error"
+                entry["error"] = str(e)
+            results.append(entry)
+        job_manager.update(job_id, progress=100, message="Batch selesai")
+        return {"items": results}
+
+    job_manager.run_async(job_id, _run)
+    return {"job_id": job_id}
 
 
 def _timeline_to_stage5(segments: list[TimelineSegment]):
@@ -767,6 +845,7 @@ def timeline_export(req: TimelineExportRequest):
         caption_style=req.caption_style,
         transition_style=req.transition_style,
         ken_burns=req.ken_burns,
+        watermark_path=req.watermark_path, watermark_pos=req.watermark_pos,
     )
     if not os.path.exists(out_path):
         raise HTTPException(500, "Render selesai tapi file output tidak ditemukan")
@@ -793,10 +872,21 @@ def timeline_preview(req: TimelineExportRequest):
         ken_burns=req.ken_burns,
         resolution=_preview_resolution(),
         ffmpeg_preset="ultrafast",
+        watermark_path=req.watermark_path, watermark_pos=req.watermark_pos,
     )
     if not os.path.exists(out_path):
         raise HTTPException(500, "Preview generation failed")
     return FileResponse(out_path, media_type="video/mp4")
+
+
+@app.post("/api/watermark/upload")
+async def watermark_upload(image: UploadFile = File(...)):
+    """Fase 5.2: upload logo watermark (png/jpg/webp) -> path untuk dipakai render."""
+    _validate_upload(image, {".png", ".jpg", ".jpeg", ".webp"})
+    dest = UPLOADS_DIR / f"wm_{uuid.uuid4().hex}_{Path(image.filename).name}"
+    with open(dest, "wb") as f:
+        shutil.copyfileobj(image.file, f)
+    return {"watermark_path": str(dest), "name": image.filename}
 
 class SubtitleRegenRequest(BaseModel):
     segments: list[dict]  # [{index, text, audio_path, keywords?}]
