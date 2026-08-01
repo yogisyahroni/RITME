@@ -362,10 +362,7 @@ def _synthesize_f5tts(text: str, out_path: str, lang: str = "en", nfe_step: int 
     else:
         # Transcribe the reference audio
         try:
-            from faster_whisper import WhisperModel
-            w_device = "cuda" if torch.cuda.is_available() else "cpu"
-            w_compute = "float16" if w_device == "cuda" else "int8"
-            w_model = WhisperModel("base", device=w_device, compute_type=w_compute)
+            w_model = _get_whisper_model("base")
             w_segments, _ = w_model.transcribe(temp_ref, word_timestamps=False)
             ref_text = " ".join([s.text for s in w_segments]).strip()
             
@@ -432,29 +429,39 @@ def _synthesize_f5tts(text: str, out_path: str, lang: str = "en", nfe_step: int 
     sf.write(out_path, final_audio, out_sr)
 
 
+def _get_whisper_model(model_size: str = WHISPER_MODEL_SIZE):
+    """Module-level singleton — WhisperModel load ~2-4s; transcribe_segment_audio
+    would otherwise reload it once per segment (8 segments = 8 loads)."""
+    import torch
+    global _WHISPER_MODEL_CACHE, _WHISPER_MODEL_KEY
+    if torch.cuda.is_available():
+        device, compute_type = "cuda", "float16"
+    else:
+        device, compute_type = "cpu", "int8"
+    key = f"{model_size}:{device}:{compute_type}"
+    if _WHISPER_MODEL_CACHE is None or _WHISPER_MODEL_KEY != key:
+        from faster_whisper import WhisperModel
+        _WHISPER_MODEL_CACHE = WhisperModel(model_size, device=device, compute_type=compute_type)
+        _WHISPER_MODEL_KEY = key
+        print(f"[stage3] Whisper loaded ({model_size}, {device.upper()}/{compute_type})")
+    return _WHISPER_MODEL_CACHE
+
+
+_WHISPER_MODEL_CACHE = None
+_WHISPER_MODEL_KEY = None
+
+
 def transcribe_with_timestamps(audio_path: str, model_size: str = WHISPER_MODEL_SIZE) -> list[dict]:
     """
     Transcribe narration audio and return word-level timestamps:
     [{"word": "...", "start": 1.23, "end": 1.45}, ...]
     """
     try:
-        from faster_whisper import WhisperModel
         import torch
     except ImportError:
         raise RuntimeError("Run: pip install faster-whisper torch")
 
-    # device="auto" already picks GPU (CUDA) over CPU when available, but the
-    # *quantization* also needs to match: float16 is the fast, accurate choice
-    # on GPU, while int8 is faster_whisper's recommended CPU quantization.
-    # Leaving this as a blanket "int8" meant CPU-quality math even when a GPU
-    # was doing the work.
-    if torch.cuda.is_available():
-        device, compute_type = "cuda", "float16"
-    else:
-        device, compute_type = "cpu", "int8"
-
-    model = WhisperModel(model_size, device=device, compute_type=compute_type)
-    print(f"[stage3] Whisper running on {device.upper()} ({compute_type})")
+    model = _get_whisper_model(model_size)
     segments, _info = model.transcribe(audio_path, word_timestamps=True)
 
     words = []

@@ -207,6 +207,16 @@ def _caption_clips_for_segment(seg: dict, style: dict, frame_w: int, frame_h: in
 # ---------------------------------------------------------------------------
 # Assembly
 # ---------------------------------------------------------------------------
+def _safe_output_name(name: str, fallback: str = "ritme_output") -> str:
+    """Sanitize user-supplied output_name (path traversal + header injection)."""
+    import re
+    if not name:
+        return fallback
+    s = re.sub(r"[^\w\-. ]+", "_", str(name))
+    s = s.replace("..", "_").strip(" ._-")
+    return (s or fallback)[:80]
+
+
 def assemble_video(timed_segments: list[dict], footage_map: dict[int, dict],
                     narration_audio_path: str, template: dict,
                     output_name: str = "final_output", on_progress=None,
@@ -434,7 +444,7 @@ def assemble_video(timed_segments: list[dict], footage_map: dict[int, dict],
     if on_progress:
         on_progress(20, "Rendering (ffmpeg encode)…")
 
-    out_path = str(OUTPUT_DIR / f"{output_name}.mp4")
+    out_path = str(OUTPUT_DIR / f"{_safe_output_name(output_name)}.mp4")
 
     logger = None
     if on_progress:

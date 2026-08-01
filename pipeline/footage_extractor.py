@@ -45,8 +45,15 @@ def _get_face_tag(image_path: str, known_faces_dir: str) -> str:
             
         return None
     except Exception as e:
-        print(f"Face recognition error: {e}")
+        # Optional dep (deepface/tensorflow) — warn sekali, jangan spam tiap clip
+        global _FACE_WARNED
+        if not _FACE_WARNED:
+            print(f"[footage_extractor] Face recognition unavailable (optional): {e}")
+            _FACE_WARNED = True
         return None
+
+
+_FACE_WARNED = False
 
 def _get_image_tag(image_path: str, gemini_key: str = None, openai_key: str = None, openai_model: str = "gpt-4o-mini", caption_model: str = "auto") -> str:
     """

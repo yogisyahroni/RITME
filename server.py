@@ -42,6 +42,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
+import json
+import os
 
 from config import TEMPLATES_DIR, OUTPUT_DIR, CACHE_DIR
 from job_manager import job_manager
@@ -116,7 +118,6 @@ def get_template(name: str):
 
 @app.get("/api/templates")
 def list_templates():
-    import json
     from config import TEMPLATES_DIR
     templates = []
     if TEMPLATES_DIR.exists():
@@ -130,6 +131,16 @@ def list_templates():
             except:
                 pass
     return templates
+def _validate_youtube_url(url: str) -> str:
+    """Allow only real YouTube URLs — prevents yt-dlp SSRF against
+    internal networks (169.254.169.254 metadata, localhost services, …)."""
+    import re
+    url = (url or "").strip()
+    if not re.match(r"^https?://(www\.)?(youtube\.com/(watch\?v=|shorts/|live/|embed/)|youtu\.be/)", url):
+        raise HTTPException(400, "URL harus video YouTube (youtube.com/watch, /shorts/, /live/, /embed/, atau youtu.be)")
+    return url
+
+
 class ScriptRequest(BaseModel):
     template_name: str
     topic: str
@@ -171,7 +182,7 @@ def _run_script_job(job_id: str, req, footage_video_path: str | None = None) -> 
                     dest = UPLOADS_DIR / f"{uuid.uuid4().hex}_youtube.mp4"
                     ydl_opts = {"format": "best[height<=1080]", "outtmpl": str(dest), "quiet": True}
                     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                        info = ydl.extract_info(req.footage_youtube_url, download=True)
+                        info = ydl.extract_info(_validate_youtube_url(req.footage_youtube_url), download=True)
                         if info and 'title' in info and not actual_topic:
                             actual_topic = " ".join(info['title'].split()[:4])
 
@@ -439,6 +450,7 @@ async def extract_youtube_footage(req: YoutubeExtractRequest):
     
     if not req.youtube_url.strip():
         raise HTTPException(400, "youtube_url wajib diisi")
+    _validate_youtube_url(req.youtube_url)
     
     dest = UPLOADS_DIR / f"{uuid.uuid4().hex}_youtube.mp4"
     
@@ -585,8 +597,6 @@ class ExportRequest(BaseModel):
 @app.post("/api/export/project")
 def export_project_endpoint(req: ExportRequest):
     from fastapi.responses import FileResponse
-    import os
-    
     footage_map_int = {int(k): v for k, v in req.footage_map.items() if v}
 
     # Resolve the music file for the export (Fase 1C.2)
@@ -622,7 +632,7 @@ def export_project_endpoint(req: ExportRequest):
         return FileResponse(
             zip_path,
             media_type="application/zip",
-            filename=f"{req.output_name}_project.zip"
+            filename=f"{_safe_output_name(req.output_name)}_project.zip"
         )
     except Exception as e:
         import traceback
@@ -717,6 +727,20 @@ def _load_timeline_template(name: str) -> dict:
     return {"pacing": {"avg_shot_duration": 3.0}}
 
 
+def _safe_output_name(name: str, fallback: str = "ritme_output") -> str:
+    """Sanitize user-supplied output_name:
+    - strip path separators & traversal (../, ..\\)
+    - drop CR/LF (Content-Disposition header injection)
+    - keep only word chars, dash, dot, space; clamp length
+    """
+    import re
+    if not name:
+        return fallback
+    s = re.sub(r"[^\w\-. ]+", "_", str(name))
+    s = s.replace("..", "_").strip(" ._-")
+    return (s or fallback)[:80]
+
+
 def _preview_resolution() -> tuple[int, int]:
     """Downscaled even-numbered resolution derived from OUTPUT_RESOLUTION —
     used by timeline preview so renders stay fast without manual ffmpeg."""
@@ -746,7 +770,7 @@ def timeline_export(req: TimelineExportRequest):
     )
     if not os.path.exists(out_path):
         raise HTTPException(500, "Render selesai tapi file output tidak ditemukan")
-    return FileResponse(out_path, media_type="video/mp4", filename=f"{req.output_name}.mp4")
+    return FileResponse(out_path, media_type="video/mp4", filename=f"{_safe_output_name(req.output_name)}.mp4")
 
 
 @app.post("/api/timeline/preview")
