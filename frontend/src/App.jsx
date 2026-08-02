@@ -1699,12 +1699,21 @@ function StudioPage() {
    HEADER BAR — navigasi antar halaman (hash router)
    ============================================================ */
 function HeaderBar({ route }) {
+  // baca versi bundle dari URL script (mis. /bundle.js?v=1785695412) — buat debug UI basi
+  const bundleVer = (() => {
+    try {
+      const m = document.querySelector('script[src*="bundle.js"]');
+      const v = m && m.src.match(/v=(\d+)/);
+      return v ? `v${v[1]}` : "?";
+    } catch (_) { return "?"; }
+  })();
   return (
     <div className="flex items-center justify-between px-4 sm:px-6 py-3.5" style={{ borderBottom: `1px solid ${C.border}`, position: "sticky", top: 0, zIndex: 40, background: C.bg }}>
       <div className="flex items-baseline gap-2.5">
         <a href="#/studio" style={{ textDecoration: "none", display: "flex", alignItems: "baseline", gap: 10 }}>
           <span style={{ fontFamily: F.display, fontSize: 19, fontWeight: 800, color: C.paper, letterSpacing: "0.02em" }}>RITME</span>
           <span style={{ fontFamily: F.mono, fontSize: 10, color: C.paperFaint, letterSpacing: "0.08em" }}>AUTO-EDIT PIPELINE</span>
+          <span title="Versi bundle yang ke-load (debug UI basi)" style={{ fontFamily: F.mono, fontSize: 9, color: C.cyan, background: "rgba(111,231,221,0.1)", border: "1px solid rgba(111,231,221,0.25)", borderRadius: 8, padding: "1px 6px" }}>{bundleVer}</span>
         </a>
       </div>
       <nav className="flex items-center gap-1.5">
