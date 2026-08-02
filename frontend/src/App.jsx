@@ -1536,7 +1536,7 @@ function PreviewPane({ footageData, picks }) {
   );
 }
 
-function StudioWorkspace({ active, setActive, maxUnlocked, template, setTemplate, script, setScript, narration, setNarration, footageData, setFootageData, picks, setPicks, scriptJobId, goNext, handleReset }) {
+function StudioWorkspace({ active, setActive, maxUnlocked, template, setTemplate, script, setScript, narration, setNarration, footageData, setFootageData, picks, setPicks, scriptJobId, setScriptJobId, goNext, handleReset }) {
   const ready = !!(narration && footageData);
   const data = { template, script, narration, footageData };
   return (
@@ -1687,7 +1687,7 @@ function StudioPage() {
           narration={narration} setNarration={setNarration}
           footageData={footageData} setFootageData={setFootageData}
           picks={picks} setPicks={setPicks}
-          scriptJobId={scriptJobId}
+          scriptJobId={scriptJobId} setScriptJobId={setScriptJobId}
           goNext={goNext} handleReset={handleReset}
         />
       )}

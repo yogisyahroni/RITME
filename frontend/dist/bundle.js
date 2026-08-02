@@ -25719,7 +25719,7 @@ BABAK: ${actLabel}
     }
     return /* @__PURE__ */ import_react6.default.createElement("div", { className: "w-full h-full flex flex-col items-center justify-center gap-2.5" }, /* @__PURE__ */ import_react6.default.createElement(Play, { size: 30, color: C4.paperFaint, style: { opacity: 0.45 } }), /* @__PURE__ */ import_react6.default.createElement("span", { style: { fontFamily: F4.mono, fontSize: 10, color: C4.paperFaint } }, "PREVIEW \u2014 isi langkah 1\u20134 di panel kiri"));
   }
-  function StudioWorkspace({ active, setActive, maxUnlocked, template, setTemplate, script, setScript, narration, setNarration, footageData, setFootageData, picks, setPicks, scriptJobId, goNext, handleReset }) {
+  function StudioWorkspace({ active, setActive, maxUnlocked, template, setTemplate, script, setScript, narration, setNarration, footageData, setFootageData, picks, setPicks, scriptJobId, setScriptJobId, goNext, handleReset }) {
     const ready = !!(narration && footageData);
     const data = { template, script, narration, footageData };
     return /* @__PURE__ */ import_react6.default.createElement("div", { className: "flex flex-col w-full", style: { height: "calc(100vh - 58px)" } }, /* @__PURE__ */ import_react6.default.createElement("div", { className: "flex items-center justify-between px-4 sm:px-6 py-2.5 shrink-0", style: { borderBottom: `1px solid ${C4.border}` } }, /* @__PURE__ */ import_react6.default.createElement("div", { className: "flex items-center gap-2" }, /* @__PURE__ */ import_react6.default.createElement(Layers, { size: 14, color: C4.cyan }), /* @__PURE__ */ import_react6.default.createElement("span", { style: { fontFamily: F4.mono, fontSize: 10, color: C4.paperFaint, letterSpacing: "0.1em" } }, "EDITOR WORKSPACE")), /* @__PURE__ */ import_react6.default.createElement("button", { onClick: handleReset, className: "flex items-center gap-1.5 px-3 py-1.5 rounded", style: { background: "transparent", border: "none", color: C4.red, cursor: "pointer", opacity: 0.8 }, onMouseEnter: (e) => e.currentTarget.style.opacity = 1, onMouseLeave: (e) => e.currentTarget.style.opacity = 0.8 }, /* @__PURE__ */ import_react6.default.createElement(Trash2, { size: 12 }), /* @__PURE__ */ import_react6.default.createElement("span", { style: { fontFamily: F4.mono, fontSize: 10 } }, "Reset Project"))), /* @__PURE__ */ import_react6.default.createElement("div", { className: "flex flex-1 overflow-hidden" }, /* @__PURE__ */ import_react6.default.createElement("aside", { className: "w-[330px] shrink-0 overflow-y-auto", style: { borderRight: `1px solid ${C4.border}`, background: C4.panel } }, /* @__PURE__ */ import_react6.default.createElement("div", { className: "px-4 pt-3 pb-2" }, /* @__PURE__ */ import_react6.default.createElement("span", { style: { fontFamily: F4.mono, fontSize: 9, color: C4.paperFaint, letterSpacing: "0.14em" } }, "PROJECT SETUP")), SETUP_STEPS.map((step) => {
@@ -25741,7 +25741,7 @@ BABAK: ${actLabel}
     const [narration, setNarration] = useStickyState(null, "ritme_narration");
     const [footageData, setFootageData] = useStickyState(null, "ritme_footageData");
     const [picks, setPicks] = useStickyState({}, "ritme_picks");
-    const [scriptJobId, setScriptJobId2] = (0, import_react6.useState)(null);
+    const [scriptJobId, setScriptJobId] = (0, import_react6.useState)(null);
     const handleReset = () => {
       if (window.confirm("Reset seluruh progress dan mulai project baru?")) {
         setActive(1);
@@ -25779,6 +25779,7 @@ BABAK: ${actLabel}
         picks,
         setPicks,
         scriptJobId,
+        setScriptJobId,
         goNext,
         handleReset
       }
