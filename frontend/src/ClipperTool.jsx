@@ -309,15 +309,22 @@ export default function ClipperTool({ onClose, variant = "modal" }) {
                               </div>
                             )}
                             {!capsLoading && !capsError && previewWords && previewWords.length > 0 && (
-                              <div style={{ fontFamily: F.body, fontWeight: 800, fontSize: 17, lineHeight: 1.5, textShadow: "0 2px 4px rgba(0,0,0,0.9), 0 0 2px #000, 0 0 2px #000" }}>
+                              <div style={{
+                                display: "flex", flexWrap: "wrap", justifyContent: "center", alignItems: "center",
+                                gap: "2px 6px",
+                                fontFamily: F.body, fontWeight: 800, fontSize: 16, lineHeight: 1.45,
+                                background: "rgba(0,0,0,0.62)", borderRadius: 12, padding: "8px 14px",
+                                maxWidth: "100%", textAlign: "center",
+                              }}>
                                 {previewWords.map((w, i) => {
-                                  // window: 6 kata sebelum & sesudah kata aktif
-                                  const vis = activeWord < 0 || (i >= activeWord - 6 && i <= activeWord + 6);
+                                  // window: 8 kata sebelum & sesudah kata aktif (TikTok-style sentence)
+                                  const vis = activeWord < 0 || (i >= activeWord - 8 && i <= activeWord + 8);
                                   if (!vis) return null;
                                   return (
                                     <span key={i} style={{
-                                      color: i === activeWord ? "#ffd400" : i < activeWord ? "#ffffff" : "rgba(255,255,255,0.55)",
-                                    }}>{w.word}{" "}</span>
+                                      color: i === activeWord ? "#ffd400" : i < activeWord ? "#ffffff" : "rgba(255,255,255,0.6)",
+                                      whiteSpace: "nowrap",
+                                    }}>{w.word}</span>
                                   );
                                 })}
                               </div>
