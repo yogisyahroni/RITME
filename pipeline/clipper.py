@@ -184,3 +184,70 @@ def extract_frame(video_path: str, at_second: float, out_image: str) -> str:
     if r.returncode != 0:
         raise RuntimeError(f"ffmpeg frame gagal: {r.stderr[-300:]}")
     return out_image
+
+
+# ---------------------------------------------------------------------------
+# AutoCaption (2026-08-02)
+# ---------------------------------------------------------------------------
+def transcribe_clip_words(clip_path: str, model_size: str = "base") -> list[dict]:
+    """Whisper word timestamps untuk 1 clip video (audio diekstrak via ffmpeg).
+
+    Returns [{"word", "start", "end"}, ...] dalam waktu RELATIF clip.
+    """
+    from pipeline.stage3_narration import transcribe_with_timestamps
+    import tempfile
+    with tempfile.TemporaryDirectory() as td:
+        wav = str(Path(td) / "clip_audio.wav")
+        cmd = ["ffmpeg", "-y", "-loglevel", "error", "-i", clip_path,
+               "-vn", "-ac", "1", "-ar", "16000", wav]
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+        if r.returncode != 0 or not Path(wav).exists():
+            raise RuntimeError(f"Ekstrak audio clip gagal: {r.stderr[-300:]}")
+        return transcribe_with_timestamps(wav, model_size=model_size)
+
+
+def burn_captions(clip_path: str, words: list[dict], style: dict | str,
+                  out_path: str | None = None, fps: int = 30) -> str:
+    """Burn karaoke caption ke clip video (moviepy overlay), retain audio.
+
+    Reuse caption_renderer karaoke frames + pattern yang sama kayak
+    stage5_assembly._caption_clips_for_segment. Returns out_path.
+    """
+    import numpy as _np
+    from moviepy import VideoFileClip, CompositeVideoClip, ImageClip
+    from pipeline.caption_renderer import render_karaoke_images, resolve_caption_style
+
+    if not words:
+        return clip_path  # gak ada kata → clip polos
+    style = resolve_caption_style({"caption_style": style}) if isinstance(style, str) else style
+    clip = VideoFileClip(clip_path)
+    frame_w, frame_h = clip.w, clip.h
+    frames = render_karaoke_images(words, style, frame_w, frame_h)
+
+    overlays = []
+    clip_dur = float(clip.duration or 0)
+    for f in frames:
+        w_start = max(0.0, float(f["start"]))
+        w_end = min(clip_dur, float(f["end"]))
+        if w_end - w_start < 0.03:
+            w_end = w_start + 0.05
+        if w_end <= 0 or w_start >= clip_dur:
+            continue
+        overlays.append(
+            ImageClip(_np.array(f["image"]))
+            .with_duration(w_end - w_start)
+            .with_start(w_start)
+        )
+    if not overlays:
+        clip.close()
+        return clip_path
+
+    final = CompositeVideoClip([clip, *overlays])
+    final.fps = fps
+    out = out_path or str(Path(clip_path).with_name(Path(clip_path).stem + "_captioned.mp4"))
+    final.write_videofile(
+        out, codec="libx264", audio_codec="aac", audio_bitrate="128k",
+        preset="fast", fps=fps, threads=4, logger=None,
+    )
+    clip.close()
+    return out

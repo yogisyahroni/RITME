@@ -61,6 +61,8 @@ export default function ClipperTool({ onClose, variant = "modal" }) {
   const [selected, setSelected] = useState({});         // index -> true
 
   const [aspect, setAspect] = useState("9:16");
+  const [autoCaption, setAutoCaption] = useState(false);
+  const [captionStyle, setCaptionStyle] = useState("bold-white-bottom");
   const [rendering, setRendering] = useState(false);
   const [results, setResults] = useState(null);
   const [error, setError] = useState(null);
@@ -131,6 +133,7 @@ export default function ClipperTool({ onClose, variant = "modal" }) {
     try {
       const data = await apiPostJSON("/api/clipper/render", {
         video_path: videoPath, clips: chosen, aspect, output_name: "clipper",
+        captions: autoCaption, caption_style: captionStyle,
       });
       setResults(data);
     } catch (e) {
@@ -296,10 +299,30 @@ export default function ClipperTool({ onClose, variant = "modal" }) {
                 <select value={aspect} onChange={e => setAspect(e.target.value)} style={{ fontFamily: F.mono, fontSize: 11.5, color: C.paper, background: C.panelRaised, border: `1px solid ${C.border}`, borderRadius: 6, padding: "8px 10px", outline: "none", cursor: "pointer" }}>
                   {ASPECTS.map(a => <option key={a.id} value={a.id}>{a.label} ({a.res})</option>)}
                 </select>
+
+                {/* AutoCaption toggle */}
+                <label className="flex items-center gap-2 px-3 py-2 rounded" style={{ background: autoCaption ? "rgba(127,184,138,0.12)" : C.panelRaised, border: `1px solid ${autoCaption ? C.caption : C.border}`, cursor: "pointer" }}>
+                  <input type="checkbox" checked={autoCaption} onChange={e => setAutoCaption(e.target.checked)} style={{ accentColor: C.caption }} />
+                  <span style={{ fontFamily: F.body, fontSize: 12, color: autoCaption ? C.caption : C.paperDim, fontWeight: 600 }}>AutoCaption</span>
+                  {autoCaption && (
+                    <select value={captionStyle} onChange={e => setCaptionStyle(e.target.value)} onClick={e => e.stopPropagation()}
+                      style={{ fontFamily: F.mono, fontSize: 10.5, color: C.paper, background: C.panel, border: `1px solid ${C.borderSoft}`, borderRadius: 4, padding: "3px 6px", outline: "none", cursor: "pointer" }}>
+                      <option value="bold-white-bottom">Bold Putih</option>
+                      <option value="minimal-white-center">Minimal Tengah</option>
+                      <option value="news-style-lower-third">News Style</option>
+                    </select>
+                  )}
+                </label>
+
                 <button onClick={render} disabled={rendering || selectedCount === 0} className="flex items-center gap-2 px-5 py-2.5 rounded" style={{ background: rendering || selectedCount === 0 ? C.panelRaised : C.tally, color: C.paper, fontFamily: F.body, fontWeight: 700, fontSize: 13, border: "none", cursor: rendering || selectedCount === 0 ? "default" : "pointer", opacity: rendering || selectedCount === 0 ? 0.5 : 1 }}>
                   {rendering ? <Loader2 size={14} className="animate-spin" /> : <Clapperboard size={14} />} {rendering ? "Merender…" : `Render ${selectedCount} Clip (${fmt(selDur)})`}
                 </button>
               </div>
+              {autoCaption && (
+                <p style={{ fontFamily: F.body, fontSize: 11, color: C.paperFaint, lineHeight: 1.5 }}>
+                  ✨ AutoCaption: tiap clip di-transcribe (Whisper) & caption karaoke di-burn langsung ke video — kayak video TikTok/Reels viral.
+                </p>
+              )}
 
               {results && (
                 <div className="flex flex-col gap-2">

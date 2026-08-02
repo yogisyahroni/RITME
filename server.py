@@ -1188,6 +1188,8 @@ class ClipperRenderRequest(BaseModel):
     clips: list[dict] = []   # [{index, start, end}]
     aspect: str = "9:16"
     output_name: str = "clipper"
+    captions: bool = False
+    caption_style: str = "bold-white-bottom"
 
 
 CLIPPER_DIR = OUTPUT_DIR / "clipper"
@@ -1275,6 +1277,19 @@ def clipper_render(req: ClipperRenderRequest):
         outs = cli.render_clips(req.video_path, req.clips, str(job_dir), aspect=req.aspect)
     except Exception as e:
         raise HTTPException(500, f"Clipper render gagal: {e}")
+
+    # AutoCaption: transcribe tiap clip + burn karaoke captions
+    if req.captions:
+        try:
+            for i, p in enumerate(outs):
+                words = cli.transcribe_clip_words(p, model_size="base")
+                out_c = str(Path(p).with_name(Path(p).stem + "_cap.mp4"))
+                cli.burn_captions(p, words, req.caption_style, out_c)
+                if Path(out_c).exists():
+                    Path(p).unlink(missing_ok=True)
+                    outs[i] = out_c
+        except Exception as e:
+            print(f"[clipper] autocaption gagal (dipakai clip polos): {e}")
 
     files = []
     for i, p in enumerate(outs):
