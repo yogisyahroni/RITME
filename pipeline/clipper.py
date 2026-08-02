@@ -206,6 +206,25 @@ def transcribe_clip_words(clip_path: str, model_size: str = "base") -> list[dict
         return transcribe_with_timestamps(wav, model_size=model_size)
 
 
+def transcribe_segment_words(video_path: str, start: float, end: float,
+                             model_size: str = "base") -> list[dict]:
+    """Whisper word timestamps untuk segmen video SUMBER (tanpa render).
+
+    Waktu relatif ke 0 (segmen mulai dari 0). Buat preview caption live.
+    """
+    from pipeline.stage3_narration import transcribe_with_timestamps
+    import tempfile
+    with tempfile.TemporaryDirectory() as td:
+        wav = str(Path(td) / "seg_audio.wav")
+        cmd = ["ffmpeg", "-y", "-loglevel", "error",
+               "-ss", f"{start:.3f}", "-t", f"{max(0.1, end - start):.3f}",
+               "-i", video_path, "-vn", "-ac", "1", "-ar", "16000", wav]
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+        if r.returncode != 0 or not Path(wav).exists():
+            raise RuntimeError(f"Ekstrak audio segmen gagal: {r.stderr[-300:]}")
+        return transcribe_with_timestamps(wav, model_size=model_size)
+
+
 def burn_captions(clip_path: str, words: list[dict], style: dict | str,
                   out_path: str | None = None, fps: int = 30) -> str:
     """Burn karaoke caption ke clip video (moviepy overlay), retain audio.

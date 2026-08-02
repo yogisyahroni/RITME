@@ -1192,6 +1192,12 @@ class ClipperRenderRequest(BaseModel):
     caption_style: str = "bold-white-bottom"
 
 
+class ClipperPreviewCapsRequest(BaseModel):
+    video_path: str
+    start: float = 0
+    end: float = 10
+
+
 CLIPPER_DIR = OUTPUT_DIR / "clipper"
 CLIPPER_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -1312,6 +1318,22 @@ def clipper_render(req: ClipperRenderRequest):
         "is_zip": True,
     })
     return {"files": files, "job_dir": str(job_dir)}
+
+
+@app.post("/api/clipper/preview_captions")
+def clipper_preview_captions(req: ClipperPreviewCapsRequest):
+    """Transcribe segmen video sumber (tanpa render) -> word timestamps relatif.
+
+    Buat live caption overlay di preview player.
+    """
+    from pipeline import clipper as cli
+    if not os.path.exists(req.video_path):
+        raise HTTPException(400, "video_path tidak ditemukan")
+    try:
+        words = cli.transcribe_segment_words(req.video_path, req.start, req.end)
+        return {"words": words, "start": req.start}
+    except Exception as e:
+        raise HTTPException(500, f"Transcribe preview gagal: {e}")
 
 
 # ============================================================

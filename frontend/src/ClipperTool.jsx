@@ -64,9 +64,39 @@ export default function ClipperTool({ onClose, variant = "modal" }) {
   const [autoCaption, setAutoCaption] = useState(false);
   const [captionStyle, setCaptionStyle] = useState("bold-white-bottom");
   const [rendering, setRendering] = useState(false);
+  const [previewWords, setPreviewWords] = useState(null);   // words utk preview clip
+  const [capsLoading, setCapsLoading] = useState(false);
+  const [capsError, setCapsError] = useState("");
+  const [activeWord, setActiveWord] = useState(-1);          // index kata aktif di preview
   const [results, setResults] = useState(null);
   const [error, setError] = useState(null);
   const fileRef = useRef(null);
+
+  // Preview caption: fetch word timestamps saat previewClip berubah (kalau autoCaption ON)
+  useEffect(() => {
+    setActiveWord(-1);
+    const c = clips[previewClip];
+    if (previewClip === null || !c || !autoCaption) {
+      setPreviewWords(null);
+      setCapsLoading(false);
+      return;
+    }
+    if (!videoPath) return;
+    let cancelled = false;
+    setCapsLoading(true);
+    setCapsError("");
+    apiPostJSON("/api/clipper/preview_captions", {
+      video_path: videoPath, start: c.start, end: c.end,
+    }).then(d => {
+      if (cancelled) return;
+      setPreviewWords(d.words || []);
+    }).catch(e => {
+      if (cancelled) return;
+      setCapsError(String(e.message || e));
+      setPreviewWords(null);
+    }).finally(() => { if (!cancelled) setCapsLoading(false); });
+    return () => { cancelled = true; };
+  }, [previewClip, autoCaption, videoPath]);
 
   const prepSource = async () => {
     setError(null); setResults(null); setClips([]); setVideoPath(null);
@@ -240,7 +270,7 @@ export default function ClipperTool({ onClose, variant = "modal" }) {
                       background: "radial-gradient(circle, #1E1B15 0%, #15130F 70%)",
                       padding: "16px 0", minHeight: 460,
                     }}>
-                      <div style={{ height: "min(520px, 70vh)", aspectRatio: aspect === "1:1" ? "1 / 1" : aspect === "16:9" ? "16 / 9" : "9 / 16", maxWidth: "100%", boxShadow: "0 8px 32px rgba(0,0,0,0.6)", borderRadius: 6, overflow: "hidden" }}>
+                      <div style={{ height: "min(520px, 70vh)", aspectRatio: aspect === "1:1" ? "1 / 1" : aspect === "16:9" ? "16 / 9" : "9 / 16", maxWidth: "100%", boxShadow: "0 8px 32px rgba(0,0,0,0.6)", borderRadius: 6, overflow: "hidden", position: "relative" }}>
                         <video
                           key={`${previewClip}-${aspect}`}
                           src={videoUrl}
@@ -251,7 +281,45 @@ export default function ClipperTool({ onClose, variant = "modal" }) {
                           onLoadedMetadata={(e) => {
                             try { e.currentTarget.currentTime = clips[previewClip].start + 0.05; e.currentTarget.play().catch(() => {}); } catch (_) {}
                           }}
+                          onTimeUpdate={(e) => {
+                            if (!previewWords || !previewWords.length) return;
+                            const rel = e.currentTarget.currentTime - clips[previewClip].start;
+                            let idx = -1;
+                            for (let i = 0; i < previewWords.length; i++) {
+                              if (rel >= previewWords[i].start && rel <= (previewWords[i].end || previewWords[i].start + 0.1)) { idx = i; break; }
+                            }
+                            if (idx !== activeWord) setActiveWord(idx);
+                          }}
                         />
+                        {/* Live caption overlay (saat AutoCaption ON) */}
+                        {autoCaption && (
+                          <div style={{ position: "absolute", left: 0, right: 0, bottom: 48, padding: "0 10px", textAlign: "center", pointerEvents: "none" }}>
+                            {capsLoading && (
+                              <div className="flex items-center justify-center gap-2" style={{ fontFamily: F.body, fontSize: 12, color: C.paperDim, background: "rgba(0,0,0,0.55)", borderRadius: 20, padding: "6px 14px", display: "inline-flex" }}>
+                                <Loader2 size={13} className="animate-spin" /> Transkripsi clip…
+                              </div>
+                            )}
+                            {capsError && (
+                              <div style={{ fontFamily: F.body, fontSize: 11, color: C.red, background: "rgba(0,0,0,0.6)", borderRadius: 8, padding: "6px 10px", display: "inline-block" }}>
+                                ⚠ {capsError}
+                              </div>
+                            )}
+                            {!capsLoading && !capsError && previewWords && previewWords.length > 0 && (
+                              <div style={{ fontFamily: F.body, fontWeight: 800, fontSize: 17, lineHeight: 1.5, textShadow: "0 2px 4px rgba(0,0,0,0.9), 0 0 2px #000, 0 0 2px #000" }}>
+                                {previewWords.map((w, i) => {
+                                  // window: 6 kata sebelum & sesudah kata aktif
+                                  const vis = activeWord < 0 || (i >= activeWord - 6 && i <= activeWord + 6);
+                                  if (!vis) return null;
+                                  return (
+                                    <span key={i} style={{
+                                      color: i === activeWord ? "#ffd400" : i < activeWord ? "#ffffff" : "rgba(255,255,255,0.55)",
+                                    }}>{w.word}{" "}</span>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </div>
                   )}
