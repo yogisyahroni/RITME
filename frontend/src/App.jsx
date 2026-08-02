@@ -5,7 +5,7 @@ import BatchRenderTool from "./BatchRenderTool.jsx";
 import {
   Film, FileText, Mic, ScanSearch, Clapperboard,
   Check, Lock, RefreshCw, Download, Info, ChevronRight, Play,
-  Upload, AlertTriangle, X, Plus, Loader2, Scissors, Trash2, Layers
+  Upload, AlertTriangle, X, Plus, Loader2, Scissors, Trash2, Layers, ArrowLeft
 } from "lucide-react";
 
 /* ============================================================
@@ -54,6 +54,33 @@ function useStickyState(defaultValue, key) {
     } catch {}
   }, [key, value]);
   return [value, setValue];
+}
+
+/* ============================================================
+   HASH ROUTER — multi-page tanpa dependency baru.
+   Route: #/studio (wizard pipeline) · #/clipper · #/batch · #/extractor.
+   Hash routing aman buat FastAPI StaticFiles: server gak perlu tahu path,
+   semua routing terjadi di client.
+   ============================================================ */
+function useHashRoute(defaultRoute = "#/studio") {
+  const [route, setRoute] = useState(() => window.location.hash || defaultRoute);
+  useEffect(() => {
+    const onHash = () => setRoute(window.location.hash || defaultRoute);
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, [defaultRoute]);
+  return route;
+}
+
+const NAV_ITEMS = [
+  { id: "#/studio", label: "STUDIO", icon: Film },
+  { id: "#/clipper", label: "CLIPPER", icon: Clapperboard },
+  { id: "#/batch", label: "BATCH", icon: Layers },
+  { id: "#/extractor", label: "EXTRACTOR", icon: ScanSearch },
+];
+
+function goStudio() {
+  window.location.hash = "#/studio";
 }
 
 const SOURCE_STYLES = {
@@ -1261,7 +1288,8 @@ function StageRender({ template, narration, footageData, picks }) {
 /* ============================================================
    FOOTAGE EXTRACTOR TOOL (Standalone)
    ============================================================ */
-function FootageExtractorTool({ onClose }) {
+function FootageExtractorTool({ onClose, variant = "modal" }) {
+  const isPage = variant === "page";
   const [file, setFile] = useState(null);
   const [youtubeUrl, setYoutubeUrl] = useState("");
   const [topic, setTopic] = useState("");
@@ -1312,9 +1340,9 @@ function FootageExtractorTool({ onClose }) {
   }, [jobId]);
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end" style={{ background: "rgba(0,0,0,0.5)" }}>
-      {/* Sidebar Panel */}
-      <div className="w-full max-w-md h-full flex flex-col shadow-2xl" style={{ background: C.bg, borderLeft: `1px solid ${C.border}`, animation: "slideInRight 0.3s ease-out forwards" }}>
+    <div className={isPage ? "min-h-[calc(100vh-57px)]" : "fixed inset-0 z-50 flex justify-end"} style={isPage ? undefined : { background: "rgba(0,0,0,0.5)" }}>
+      {/* Sidebar Panel (modal) / Full page (page) */}
+      <div className={isPage ? "w-full max-w-3xl mx-auto px-4 sm:px-6 py-6 flex flex-col gap-5" : "w-full max-w-md h-full flex flex-col shadow-2xl"} style={isPage ? undefined : { background: C.bg, borderLeft: `1px solid ${C.border}`, animation: "slideInRight 0.3s ease-out forwards" }}>
         <style>{`@keyframes slideInRight { from { transform: translateX(100%); } to { transform: translateX(0); } }`}</style>
         
         <div className="flex items-center justify-between px-5 py-4" style={{ background: C.panel, borderBottom: `1px solid ${C.border}` }}>
@@ -1322,10 +1350,17 @@ function FootageExtractorTool({ onClose }) {
             <Scissors size={18} color={C.tally} />
             <span style={{ fontFamily: F.display, fontSize: 16, fontWeight: 700, color: C.paper }}>Ekstrak Footage</span>
           </div>
-          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: C.paperDim }}><X size={20} /></button>
+          {isPage ? (
+            <button onClick={onClose} className="flex items-center gap-1.5 px-3 py-1.5 rounded" style={{ background: C.panelRaised, border: `1px solid ${C.borderSoft}`, color: C.paperDim, cursor: "pointer" }}>
+              <ArrowLeft size={14} />
+              <span style={{ fontFamily: F.mono, fontSize: 10 }}>Kembali ke Studio</span>
+            </button>
+          ) : (
+            <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: C.paperDim }}><X size={20} /></button>
+          )}
         </div>
         
-        <div className="p-5 flex flex-col gap-5 overflow-y-auto flex-1">
+        <div className={isPage ? "flex flex-col gap-5" : "p-5 flex flex-col gap-5 overflow-y-auto flex-1"}>
           <p style={{ fontFamily: F.body, fontSize: 13, color: C.paperDim, lineHeight: 1.5 }}>
             Potong video panjang secara sekuensial. Hasil potongan akan bisa dicari otomatis oleh Tahap 4 berdasarkan "Kata Kunci Footage".
           </p>
@@ -1374,7 +1409,7 @@ function FootageExtractorTool({ onClose }) {
         </div>
         
         <div className="p-5 flex justify-end gap-3" style={{ borderTop: `1px solid ${C.border}`, background: C.panel }}>
-           <button onClick={onClose} style={{ background: "transparent", color: C.paper, border: "none", fontFamily: F.body, fontWeight: 600, fontSize: 13, cursor: "pointer" }}>Tutup</button>
+           <button onClick={onClose} style={{ background: "transparent", color: C.paper, border: "none", fontFamily: F.body, fontWeight: 600, fontSize: 13, cursor: "pointer" }}>{isPage ? "← Kembali ke Studio" : "Tutup"}</button>
            <PrimaryButton onClick={startExtract} disabled={(inputType === "file" && !file) || (inputType === "youtube" && !youtubeUrl) || jobId} loading={!!jobId} icon={Scissors}>Mulai Ekstrak</PrimaryButton>
         </div>
       </div>
@@ -1383,15 +1418,14 @@ function FootageExtractorTool({ onClose }) {
 }
 
 /* ============================================================
-   ROOT
+   STUDIO PAGE — wizard pipeline (Template → Script → Narration →
+   Footage → Timeline). Semua progress state tinggal di sini
+   (useStickyState → localStorage), jadi pindah-pindah halaman
+   gak ngereset progress.
    ============================================================ */
-export default function Ritme() {
+function StudioPage() {
   const [active, setActive] = useStickyState(1, "ritme_active");
   const [maxUnlocked, setMaxUnlocked] = useStickyState(1, "ritme_maxUnlocked");
-  const [showExtractor, setShowExtractor] = useState(false);
-  const [showClipper, setShowClipper] = useState(false);
-  const [showBatch, setShowBatch] = useState(false);
-
   const [template, setTemplate] = useStickyState(null, "ritme_template");
   const [script, setScript] = useStickyState(null, "ritme_script");
   const [narration, setNarration] = useStickyState(null, "ritme_narration");
@@ -1421,52 +1455,78 @@ export default function Ritme() {
   };
 
   return (
-    <div style={{ background: C.bg, minHeight: "100vh", fontFamily: F.body }}>
-      <style>{FONT_IMPORT}</style>
-      <style>{`.animate-spin { animation: ritme-spin 1s linear infinite; } @keyframes ritme-spin { to { transform: rotate(360deg); } }`}</style>
-
-      <div className="flex items-center justify-between px-4 sm:px-6 py-4" style={{ borderBottom: `1px solid ${C.border}` }}>
-        <div className="flex items-baseline gap-2.5">
-          <span style={{ fontFamily: F.display, fontSize: 19, fontWeight: 800, color: C.paper, letterSpacing: "0.02em" }}>RITME</span>
-          <span style={{ fontFamily: F.mono, fontSize: 10, color: C.paperFaint, letterSpacing: "0.08em" }}>AUTO-EDIT PIPELINE</span>
-        </div>
-        <div className="flex items-center gap-4">
-          <button onClick={handleReset} className="flex items-center gap-1.5 px-3 py-1.5 rounded" style={{ background: "transparent", border: "none", color: C.red, cursor: "pointer", opacity: 0.8 }} onMouseEnter={e => e.currentTarget.style.opacity = 1} onMouseLeave={e => e.currentTarget.style.opacity = 0.8}>
-            <Trash2 size={12} />
-            <span style={{ fontFamily: F.mono, fontSize: 10 }}>Reset Project</span>
-          </button>
-          <button onClick={() => setShowExtractor(true)} className="flex items-center gap-1.5 px-3 py-1.5 rounded" style={{ background: C.panel, border: `1px solid ${C.borderSoft}`, color: C.paperDim, cursor: "pointer" }}>
-            <Scissors size={12} />
-            <span style={{ fontFamily: F.mono, fontSize: 10 }}>Footage Extractor</span>
-          </button>
-          <button onClick={() => setShowClipper(true)} className="flex items-center gap-1.5 px-3 py-1.5 rounded" style={{ background: C.tally, border: "none", color: C.paper, cursor: "pointer", fontWeight: 600 }}>
-            <Clapperboard size={12} />
-            <span style={{ fontFamily: F.mono, fontSize: 10 }}>Clipper</span>
-          </button>
-          <button onClick={() => setShowBatch(true)} className="flex items-center gap-1.5 px-3 py-1.5 rounded" style={{ background: C.panel, border: `1px solid ${C.borderSoft}`, color: C.paperDim, cursor: "pointer" }}>
-            <Layers size={12} />
-            <span style={{ fontFamily: F.mono, fontSize: 10 }}>Batch Render</span>
-          </button>
-          <div className="flex items-center gap-1.5">
-            <div style={{ width: 6, height: 6, borderRadius: "50%", background: C.tally }} />
-            <span style={{ fontFamily: F.mono, fontSize: 10, color: C.paperDim }}>REC</span>
-          </div>
-        </div>
+    <>
+      <div className="px-4 sm:px-6 pt-5 max-w-3xl mx-auto flex items-center justify-between">
+        <span style={{ fontFamily: F.mono, fontSize: 10, color: C.paperFaint, letterSpacing: "0.08em" }}>
+          PIPELINE STUDIO — 5 TAHAP
+        </span>
+        <button onClick={handleReset} className="flex items-center gap-1.5 px-3 py-1.5 rounded" style={{ background: "transparent", border: "none", color: C.red, cursor: "pointer", opacity: 0.8 }} onMouseEnter={e => e.currentTarget.style.opacity = 1} onMouseLeave={e => e.currentTarget.style.opacity = 0.8}>
+          <Trash2 size={12} />
+          <span style={{ fontFamily: F.mono, fontSize: 10 }}>Reset Project</span>
+        </button>
       </div>
-      
-      {showExtractor && <FootageExtractorTool onClose={() => setShowExtractor(false)} />}
-      {showClipper && <ClipperTool onClose={() => setShowClipper(false)} />}
-      {showBatch && <BatchRenderTool onClose={() => setShowBatch(false)} />}
 
       <StageNav active={active} setActive={setActive} maxUnlocked={maxUnlocked} />
 
-      <div className="px-4 sm:px-6 py-6 max-w-3xl mx-auto">
+      <div className={`px-4 sm:px-6 py-6 ${active === 5 ? "max-w-7xl" : "max-w-3xl"} mx-auto`}>
         {active === 1 && <StageTemplate template={template} setTemplate={setTemplate} onNext={goNext} />}
         {active === 2 && template && <StageScript template={template} script={script} setScript={setScript} onNext={goNext} onScriptJob={setScriptJobId} />}
         {active === 3 && script && <StageNarration script={script} narration={narration} setNarration={setNarration} onNext={goNext} />}
         {active === 4 && narration && <StageFootage narration={narration} footageData={footageData} setFootageData={setFootageData} picks={picks} setPicks={setPicks} onNext={goNext} scriptJobId={scriptJobId} />}
         {active === 5 && narration && footageData && <TimelineEditor narration={narration} footageData={footageData} picks={picks} />}
       </div>
+    </>
+  );
+}
+
+/* ============================================================
+   HEADER BAR — navigasi antar halaman (hash router)
+   ============================================================ */
+function HeaderBar({ route }) {
+  return (
+    <div className="flex items-center justify-between px-4 sm:px-6 py-3.5" style={{ borderBottom: `1px solid ${C.border}`, position: "sticky", top: 0, zIndex: 40, background: C.bg }}>
+      <div className="flex items-baseline gap-2.5">
+        <a href="#/studio" style={{ textDecoration: "none", display: "flex", alignItems: "baseline", gap: 10 }}>
+          <span style={{ fontFamily: F.display, fontSize: 19, fontWeight: 800, color: C.paper, letterSpacing: "0.02em" }}>RITME</span>
+          <span style={{ fontFamily: F.mono, fontSize: 10, color: C.paperFaint, letterSpacing: "0.08em" }}>AUTO-EDIT PIPELINE</span>
+        </a>
+      </div>
+      <nav className="flex items-center gap-1.5">
+        {NAV_ITEMS.map(item => {
+          const active = route === item.id;
+          return (
+            <a key={item.id} href={item.id} className="flex items-center gap-1.5 px-3 py-1.5 rounded" style={{ background: active ? C.panelRaised : "transparent", border: `1px solid ${active ? C.border : "transparent"}`, color: active ? C.paper : C.paperDim, cursor: "pointer", textDecoration: "none" }}>
+              <item.icon size={12} />
+              <span style={{ fontFamily: F.mono, fontSize: 10, letterSpacing: "0.04em" }}>{item.label}</span>
+            </a>
+          );
+        })}
+        <div className="flex items-center gap-1.5 ml-2">
+          <div style={{ width: 6, height: 6, borderRadius: "50%", background: C.tally }} />
+          <span style={{ fontFamily: F.mono, fontSize: 10, color: C.paperDim }}>REC</span>
+        </div>
+      </nav>
+    </div>
+  );
+}
+
+/* ============================================================
+   ROOT — hash router: render halaman sesuai route
+   ============================================================ */
+export default function Ritme() {
+  const route = useHashRoute();
+
+  return (
+    <div style={{ background: C.bg, minHeight: "100vh", fontFamily: F.body }}>
+      <style>{FONT_IMPORT}</style>
+      <style>{`.animate-spin { animation: ritme-spin 1s linear infinite; } @keyframes ritme-spin { to { transform: rotate(360deg); } }`}</style>
+
+      <HeaderBar route={route} />
+
+      {route === "#/studio" && <StudioPage />}
+      {route === "#/clipper" && <ClipperTool variant="page" onClose={goStudio} />}
+      {route === "#/batch" && <BatchRenderTool variant="page" onClose={goStudio} />}
+      {route === "#/extractor" && <FootageExtractorTool variant="page" onClose={goStudio} />}
 
       <div className="px-4 sm:px-6 py-4 text-center" style={{ borderTop: `1px solid ${C.border}` }}>
         <span style={{ fontFamily: F.mono, fontSize: 10, color: C.paperFaint, letterSpacing: "0.04em" }}>

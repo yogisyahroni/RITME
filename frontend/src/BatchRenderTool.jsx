@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import { X, Upload, Layers, Loader2, AlertTriangle, Download, Check, Trash2, Play } from "lucide-react";
+import { X, Upload, Layers, Loader2, AlertTriangle, Download, Check, Trash2, Play, ArrowLeft } from "lucide-react";
 
 const C = {
   bg: "#15130F",
@@ -40,7 +40,8 @@ function fmtDur(segs) {
   return `${m}m ${Math.round(d % 60)}s`;
 }
 
-export default function BatchRenderTool({ onClose }) {
+export default function BatchRenderTool({ onClose, variant = "modal" }) {
+  const isPage = variant === "page";
   const [items, setItems] = useState([]);       // {name, body, file}
   const [jobId, setJobId] = useState(null);
   const [job, setJob] = useState(null);
@@ -119,8 +120,8 @@ export default function BatchRenderTool({ onClose }) {
   const okCount = result ? result.items.filter(i => i.status === "ok").length : 0;
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto" style={{ background: "rgba(10,8,5,0.88)", backdropFilter: "blur(4px)" }}>
-      <div className="max-w-3xl mx-auto px-4 sm:px-6 py-6">
+    <div className={isPage ? "min-h-[calc(100vh-57px)]" : "fixed inset-0 z-50 overflow-y-auto"} style={isPage ? undefined : { background: "rgba(10,8,5,0.88)", backdropFilter: "blur(4px)" }}>
+      <div className={isPage ? "max-w-4xl mx-auto px-4 sm:px-6 py-6" : "max-w-3xl mx-auto px-4 sm:px-6 py-6"}>
         <div className="flex flex-col gap-5" style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 12, padding: 24, boxShadow: "0 20px 60px rgba(0,0,0,0.6)" }}>
           <div className="flex items-start justify-between gap-4">
             <div>
@@ -128,9 +129,16 @@ export default function BatchRenderTool({ onClose }) {
               <h2 style={{ fontFamily: F.display, fontSize: 22, color: C.paper, fontWeight: 700, marginTop: 4 }}>Render Banyak Project Sekaligus</h2>
               <p style={{ fontFamily: F.body, fontSize: 13, color: C.paperDim, marginTop: 4 }}>Upload file project (.ritme.json) dari Save Project, render semua berurutan. Maksimal 10 project per batch.</p>
             </div>
-            <button onClick={onClose} className="flex items-center justify-center rounded" style={{ width: 32, height: 32, background: C.panel, border: `1px solid ${C.borderSoft}`, color: C.paperDim, cursor: "pointer" }}>
-              <X size={16} />
-            </button>
+            {isPage ? (
+              <button onClick={onClose} className="flex items-center gap-1.5 px-3 py-1.5 rounded" style={{ background: C.panelRaised, border: `1px solid ${C.borderSoft}`, color: C.paperDim, cursor: "pointer" }}>
+                <ArrowLeft size={14} />
+                <span style={{ fontFamily: F.mono, fontSize: 10 }}>Kembali ke Studio</span>
+              </button>
+            ) : (
+              <button onClick={onClose} className="flex items-center justify-center rounded" style={{ width: 32, height: 32, background: C.panel, border: `1px solid ${C.borderSoft}`, color: C.paperDim, cursor: "pointer" }}>
+                <X size={16} />
+              </button>
+            )}
           </div>
 
           <div className="flex items-center gap-3">

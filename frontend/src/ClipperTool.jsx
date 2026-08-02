@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { X, Upload, Link2, Clapperboard, Loader2, AlertTriangle, Download, Check, Film, Scissors, Info, Zap } from "lucide-react";
+import { X, Upload, Link2, Clapperboard, Loader2, AlertTriangle, Download, Check, Film, Scissors, Info, Zap, ArrowLeft } from "lucide-react";
 
 const C = {
   bg: "#15130F",
@@ -43,7 +43,8 @@ const ASPECTS = [
   { id: "1:1", label: "1:1 Square (Feed)", res: "1080×1080" },
 ];
 
-export default function ClipperTool({ onClose }) {
+export default function ClipperTool({ onClose, variant = "modal" }) {
+  const isPage = variant === "page";
   const [inputType, setInputType] = useState("file");   // file | youtube
   const [file, setFile] = useState(null);
   const [youtubeUrl, setYoutubeUrl] = useState("");
@@ -140,8 +141,8 @@ export default function ClipperTool({ onClose }) {
   const selDur = clips.filter(c => selected[c.index]).reduce((a, c) => a + c.duration, 0);
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto" style={{ background: "rgba(10,8,5,0.88)", backdropFilter: "blur(4px)" }}>
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6">
+    <div className={isPage ? "min-h-[calc(100vh-57px)]" : "fixed inset-0 z-50 overflow-y-auto"} style={isPage ? undefined : { background: "rgba(10,8,5,0.88)", backdropFilter: "blur(4px)" }}>
+      <div className={isPage ? "max-w-6xl mx-auto px-4 sm:px-6 py-6" : "max-w-5xl mx-auto px-4 sm:px-6 py-6"}>
         <div className="flex flex-col gap-6" style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 12, padding: 24, boxShadow: "0 20px 60px rgba(0,0,0,0.6)" }}>
           {/* Header */}
           <div className="flex items-start justify-between gap-4">
@@ -150,9 +151,16 @@ export default function ClipperTool({ onClose }) {
               <h2 style={{ fontFamily: F.display, fontSize: 22, color: C.paper, fontWeight: 700, marginTop: 4 }}>1 Video → N Clip</h2>
               <p style={{ fontFamily: F.body, fontSize: 13, color: C.paperDim, marginTop: 4 }}>Potong jadi beberapa clip siap upload (Reels / TikTok / Shorts). Sumber: upload file atau link YouTube.</p>
             </div>
-            <button onClick={onClose} className="flex items-center justify-center rounded" style={{ width: 32, height: 32, background: C.panel, border: `1px solid ${C.borderSoft}`, color: C.paperDim, cursor: "pointer" }}>
-              <X size={16} />
-            </button>
+            {isPage ? (
+              <button onClick={onClose} className="flex items-center gap-1.5 px-3 py-1.5 rounded" style={{ background: C.panelRaised, border: `1px solid ${C.borderSoft}`, color: C.paperDim, cursor: "pointer" }}>
+                <ArrowLeft size={14} />
+                <span style={{ fontFamily: F.mono, fontSize: 10 }}>Kembali ke Studio</span>
+              </button>
+            ) : (
+              <button onClick={onClose} className="flex items-center justify-center rounded" style={{ width: 32, height: 32, background: C.panel, border: `1px solid ${C.borderSoft}`, color: C.paperDim, cursor: "pointer" }}>
+                <X size={16} />
+              </button>
+            )}
           </div>
 
           {/* Step 1 — Sumber */}
