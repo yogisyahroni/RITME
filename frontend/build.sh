@@ -33,4 +33,8 @@ cat > input.css << 'EOF'
 EOF
 npx tailwindcss -i input.css -o dist/tailwind.css --minify
 
-echo "Done. dist/bundle.js + dist/tailwind.css rebuilt."
+# Cache-busting: inject mtime bundle.js sebagai versi query string di index.html
+# biar browser selalu fetch bundle terbaru setelah rebuild (URL beda = cache miss).
+VER=$(stat -c %Y dist/bundle.js 2>/dev/null || date +%s)
+sed -i "s|bundle.js?v=[0-9]*|bundle.js?v=$VER|" dist/index.html
+echo "Done. dist/bundle.js + dist/tailwind.css rebuilt (bundle?v=$VER)."
