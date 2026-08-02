@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { X, Upload, Link2, Clapperboard, Loader2, AlertTriangle, Download, Check, Film, Scissors, Info, Zap, ArrowLeft } from "lucide-react";
+import { X, Upload, Link2, Clapperboard, Loader2, AlertTriangle, Download, Check, Film, Scissors, Info, Zap, ArrowLeft, Play } from "lucide-react";
 
 const C = {
   bg: "#15130F",
@@ -55,6 +55,8 @@ export default function ClipperTool({ onClose, variant = "modal" }) {
   const [numClips, setNumClips] = useState(5);
   const [clips, setClips] = useState([]);
   const [totalDur, setTotalDur] = useState(0);
+  const [videoUrl, setVideoUrl] = useState("");
+  const [previewClip, setPreviewClip] = useState(null);   // index clip yang di-preview
   const [analyzing, setAnalyzing] = useState(false);
   const [selected, setSelected] = useState({});         // index -> true
 
@@ -102,11 +104,12 @@ export default function ClipperTool({ onClose, variant = "modal" }) {
 
   const analyze = async () => {
     if (!videoPath) return;
-    setError(null); setResults(null); setAnalyzing(true); setClips([]);
+    setError(null); setResults(null); setAnalyzing(true); setClips([]); setPreviewClip(null);
     try {
       const data = await apiPostJSON("/api/clipper/analyze", { video_path: videoPath, num_clips: numClips });
       setClips(data.clips || []);
       setTotalDur(data.total_duration || 0);
+      setVideoUrl(data.video_url || "");
       setSelected(Object.fromEntries((data.clips || []).map(c => [c.index, true])));
     } catch (e) {
       setError(String(e));
@@ -219,6 +222,31 @@ export default function ClipperTool({ onClose, variant = "modal" }) {
                 <span style={{ fontFamily: F.mono, fontSize: 10, color: C.amber, letterSpacing: "0.08em" }}>3 / PILIH CLIP ({selectedCount}/{clips.length})</span>
                 <button onClick={toggleAll} style={{ fontFamily: F.mono, fontSize: 10.5, color: C.cyan, background: "none", border: "none", cursor: "pointer" }}>{selectedCount === clips.length ? "Unselect semua" : "Select semua"}</button>
               </div>
+
+              {/* Preview player — klik ▶ di card buat play clip dari posisi start */}
+              {previewClip !== null && clips[previewClip] && (
+                <div className="flex flex-col gap-2 rounded overflow-hidden" style={{ background: "#000", border: `1px solid ${C.tally}` }}>
+                  <div className="flex items-center justify-between px-3 py-2" style={{ background: "rgba(232,84,46,0.12)" }}>
+                    <span style={{ fontFamily: F.mono, fontSize: 11, color: C.tally, letterSpacing: "0.06em" }}>
+                      ▶ PREVIEW CLIP {previewClip + 1} — {clips[previewClip].duration.toFixed(1)}s ({fmt(clips[previewClip].start)} – {fmt(clips[previewClip].end)})
+                    </span>
+                    <button onClick={() => setPreviewClip(null)} style={{ fontFamily: F.mono, fontSize: 11, color: C.paperDim, background: "none", border: "none", cursor: "pointer" }}>✕ Tutup</button>
+                  </div>
+                  {videoUrl && (
+                    <video
+                      key={previewClip}
+                      src={videoUrl}
+                      controls
+                      autoPlay
+                      style={{ width: "100%", maxHeight: 340, background: "#000", display: "block" }}
+                      onLoadedMetadata={(e) => {
+                        try { e.currentTarget.currentTime = clips[previewClip].start + 0.05; e.currentTarget.play().catch(() => {}); } catch (_) {}
+                      }}
+                    />
+                  )}
+                </div>
+              )}
+
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
                 {clips.map(c => {
                   const on = !!selected[c.index];
@@ -230,6 +258,15 @@ export default function ClipperTool({ onClose, variant = "modal" }) {
                         {c.thumbnail_url
                           ? <img src={c.thumbnail_url} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                           : <Film size={20} color={C.paperFaint} style={{ margin: "50px auto", display: "block" }} />}
+                        {/* tombol play preview */}
+                        <div
+                          onClick={(e) => { e.stopPropagation(); setPreviewClip(c.index); }}
+                          className="absolute inset-0 flex items-center justify-center"
+                          style={{ background: "rgba(0,0,0,0.35)", cursor: "pointer", border: "none" }}>
+                          <div style={{ width: 38, height: 38, borderRadius: "50%", background: "rgba(255,255,255,0.92)", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 2px 10px rgba(0,0,0,0.5)" }}>
+                            <Play size={17} color="#000" style={{ marginLeft: 2 }} />
+                          </div>
+                        </div>
                         {on && <div className="absolute flex items-center justify-center" style={{ top: 6, right: 6, width: 20, height: 20, borderRadius: "50%", background: C.tally }}><Check size={12} color={C.paper} strokeWidth={3} /></div>}
                       </div>
                       <div className="px-2 py-1.5" style={{ background: C.panelRaised }}>

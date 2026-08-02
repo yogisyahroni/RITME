@@ -1251,7 +1251,11 @@ def clipper_analyze(req: ClipperAnalyzeRequest):
             c["thumbnail_url"] = f"/outputs/render/{frame_rel}"
         except Exception:
             c["thumbnail_url"] = ""
-    return {"clips": clips, "total_duration": cli.probe_duration(req.video_path)}
+    return {
+        "clips": clips,
+        "total_duration": cli.probe_duration(req.video_path),
+        "video_url": f"/uploads/{Path(req.video_path).name}",
+    }
 
 
 @app.post("/api/clipper/render")
@@ -1321,11 +1325,11 @@ def thumbnail_generate(req: ThumbnailRequest):
     return {"url": f"/outputs/render/thumbnails/{out.name}", "path": str(out)}
 
 
-# Static file serving: outputs (video/audio previews) + frontend
+# Static file serving: outputs (video/audio previews) + uploads (clipper source) + frontend
 # ============================================================
-(OUTPUT_DIR / "render").mkdir(parents=True, exist_ok=True)
 app.mount("/outputs/render", StaticFiles(directory=str(OUTPUT_DIR)), name="render_output")
 app.mount("/outputs/audio", StaticFiles(directory=str(CACHE_DIR / "audio")), name="audio_output")
+app.mount("/uploads", StaticFiles(directory=str(UPLOADS_DIR)), name="uploads")
 app.mount("/outputs/footage", StaticFiles(directory=str(CACHE_DIR / "footage")), name="footage_output")
 
 FRONTEND_DIR = Path(__file__).parent / "frontend" / "dist"
