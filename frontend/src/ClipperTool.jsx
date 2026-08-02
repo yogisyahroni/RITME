@@ -228,21 +228,25 @@ export default function ClipperTool({ onClose, variant = "modal" }) {
                 <div className="flex flex-col gap-2 rounded overflow-hidden" style={{ background: "#000", border: `1px solid ${C.tally}` }}>
                   <div className="flex items-center justify-between px-3 py-2" style={{ background: "rgba(232,84,46,0.12)" }}>
                     <span style={{ fontFamily: F.mono, fontSize: 11, color: C.tally, letterSpacing: "0.06em" }}>
-                      ▶ PREVIEW CLIP {previewClip + 1} — {clips[previewClip].duration.toFixed(1)}s ({fmt(clips[previewClip].start)} – {fmt(clips[previewClip].end)})
+                      ▶ PREVIEW CLIP {previewClip + 1} — {clips[previewClip].duration.toFixed(1)}s ({fmt(clips[previewClip].start)} – {fmt(clips[previewClip].end)}) · {ASPECTS.find(a => a.id === aspect)?.res || aspect}
                     </span>
                     <button onClick={() => setPreviewClip(null)} style={{ fontFamily: F.mono, fontSize: 11, color: C.paperDim, background: "none", border: "none", cursor: "pointer" }}>✕ Tutup</button>
                   </div>
                   {videoUrl && (
-                    <video
-                      key={previewClip}
-                      src={videoUrl}
-                      controls
-                      autoPlay
-                      style={{ width: "100%", maxHeight: 340, background: "#000", display: "block" }}
-                      onLoadedMetadata={(e) => {
-                        try { e.currentTarget.currentTime = clips[previewClip].start + 0.05; e.currentTarget.play().catch(() => {}); } catch (_) {}
-                      }}
-                    />
+                    <div className="flex items-center justify-center" style={{ background: "#000", padding: "14px 0" }}>
+                      <div style={{ height: 400, aspectRatio: aspect === "1:1" ? "1 / 1" : aspect === "16:9" ? "16 / 9" : "9 / 16", maxWidth: "100%" }}>
+                        <video
+                          key={`${previewClip}-${aspect}`}
+                          src={videoUrl}
+                          controls
+                          autoPlay
+                          style={{ width: "100%", height: "100%", objectFit: "cover", background: "#000", display: "block" }}
+                          onLoadedMetadata={(e) => {
+                            try { e.currentTarget.currentTime = clips[previewClip].start + 0.05; e.currentTarget.play().catch(() => {}); } catch (_) {}
+                          }}
+                        />
+                      </div>
+                    </div>
                   )}
                 </div>
               )}
