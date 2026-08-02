@@ -603,53 +603,162 @@ def _find_yt_urls(text: str) -> list[str]:
     return out
 
 
+def _parse_script_segments(script_text):
+    """Split skrip jadi segmen per heading markdown/ALL-CAPS, kumpulin semua URL
+    YouTube, dan map URL dari blok referensi (tanpa heading) ke segmen relevan
+    via keyword scoring judul URL vs judul segmen."""
+    lines = script_text.splitlines()
+    REF_KEYWORDS = ("referensi", "riset", "source", "sumber", "link", "daftar", "bibliografi", "reference")
+    # 1) split per heading (## / ### / baris ALL-CAPS panjang)
+    segments = []  # {title, lines: [...]}
+    cur = None
+    for ln in lines:
+        stripped = ln.strip()
+        is_heading = bool(re.match(r"^#{1,4}\s+", stripped)) or (
+            len(stripped) >= 6 and stripped.isupper() and stripped.isalpha() and not re.match(r"^\[", stripped)
+        )
+        if is_heading:
+            cur = {"title": re.sub(r"^#{1,4}\s+", "", stripped), "lines": [], "is_ref": False}
+            segments.append(cur)
+        else:
+            if cur is None:
+                cur = {"title": "", "lines": [], "is_ref": False}
+                segments.append(cur)
+            cur["lines"].append(ln)
+
+    # tandai segmen referensi (judul mengandung kata kunci) — URL di sini jadi POOL
+    KONTEN_MARK = ("bab ", "intro", "outro", "episode", "bagian ", "pendahuluan", "kesimpulan", "disclaimer")
+    for seg in segments:
+        t = seg["title"].lower()
+        seg["is_ref"] = any(k in t for k in REF_KEYWORDS)
+    # propagasi: sub-heading di bawah segmen referensi (mis. kategori link YT)
+    # ikut jadi referensi, sampai ketemu heading konten (BAB/INTRO/OUTRO/dll)
+    for i in range(1, len(segments)):
+        if segments[i - 1]["is_ref"]:
+            t = segments[i]["title"].lower()
+            if not any(k in t for k in KONTEN_MARK):
+                segments[i]["is_ref"] = True
+
+    # 2) kumpulin semua URL + judul (untuk keyword matching)
+    all_urls = []  # {url, title}
+    for seg in segments:
+        for ln in seg["lines"]:
+            for u in _find_yt_urls(ln):
+                all_urls.append({"url": u, "title": ""})
+    # ambil judul link dari baris markdown "[Judul](url)" atau baris teks sebelumnya
+    for seg in segments:
+        prev = ""
+        for ln in seg["lines"]:
+            for u in _find_yt_urls(ln):
+                m = re.match(r"^\[([^\]]+)\]\(([^)]+)\)", ln.strip())
+                title = m.group(1) if m else prev
+                for a in all_urls:
+                    if a["url"] == u and not a["title"]:
+                        a["title"] = title
+            prev = re.sub(r"^[-*•]\s*", "", ln.strip())[:120]
+
+    def _score(title, seg):
+        # skor = overlap kata judul URL vs JUDUL bab (bobot 5x) + ISI bab (1x)
+        words = set(re.findall(r"[a-z0-9]+", title.lower()))
+        title_words = set(re.findall(r"[a-z0-9]+", seg["title"].lower()))
+        body = " ".join(seg["lines"])[:1500].lower()
+        body_words = set(re.findall(r"[a-z0-9]+", body))
+        return len(words & title_words) * 5 + len(words & body_words)
+
+    # 3) assign URL: segmen NON-referensi yang punya URL inline → pakai itu;
+    #    URL di segmen referensi → pool, di-assign ke segmen bab via keyword.
+    inline_used = set()
+    for seg in segments:
+        seg["urls"] = []
+        for ln in seg["lines"]:
+            for u in _find_yt_urls(ln):
+                if seg["is_ref"]:
+                    continue  # referensi: URL masuk pool
+                seg["urls"].append(u)
+                inline_used.add(u)
+
+    pool = [a for a in all_urls if a["url"] not in inline_used]
+    # target = segmen bab non-referensi
+    targets = [s for s in segments if not s["is_ref"]]
+    # assign per URL: skor tertinggi; kalau semua skor 0 → bagi rata round-robin
+    scored = [(a, max(targets, key=lambda s: _score(a["title"], s))) for a in pool]
+    zero = [a for a in pool if all(_score(a["title"], s) == 0 for s in targets)]
+    for a, best in scored:
+        if _score(a["title"], best) > 0:
+            best["urls"].append(a["url"])
+    # round-robin sisa yang skor 0, urutkan target paling panjang dulu
+    if zero:
+        order = sorted([s for s in targets if s["title"]], key=lambda s: -len("\n".join(s["lines"])))
+        if not order:
+            order = [s for s in targets if s["title"]] or targets
+        for i, a in enumerate(zero):
+            order[i % len(order)]["urls"].append(a["url"])
+
+    return segments
+
+
 @app.post("/api/footage/from_script")
 def extract_footage_from_script(req: ScriptFootageRequest):
     import yt_dlp
 
-    # Pisah skrip per bagian (blank line), cari URL YouTube tiap bagian
-    raw_segs = [s.strip() for s in re.split(r"\n\s*\n", req.script_text) if s.strip()]
+    segments = _parse_script_segments(req.script_text)
     entries = []
-    for i, seg in enumerate(raw_segs):
-        urls = _find_yt_urls(seg)
-        if urls:
-            entries.append({"index": i, "text": seg[:200], "url": urls[0], "extra_urls": urls[1:]})
+    for i, seg in enumerate(segments):
+        if seg["urls"]:
+            entries.append({
+                "index": i,
+                "text": (seg["title"] + "\n" + "\n".join(seg["lines"]))[:200],
+                "url": seg["urls"][0],
+                "extra_urls": seg["urls"][1:],
+            })
     if not entries:
-        raise HTTPException(400, "Tidak ada link YouTube valid ditemukan di skrip. Pastikan tiap bagian punya link youtube.com atau youtu.be.")
+        raise HTTPException(400, "Tidak ada link YouTube valid ditemukan di skrip. Pastikan skrip punya link youtube.com atau youtu.be (bisa di bagian referensi).")
 
     job_id = job_manager.create()
     output_dir = "outputs/extracted_footage"
 
+    # flatten: semua URL (utama + extra) jadi satu daftar job dengan segment_index
+    jobs = []
+    for e in entries:
+        jobs.append({"segment_index": e["index"], "url": e["url"], "text": e["text"]})
+        for extra in e["extra_urls"]:
+            jobs.append({"segment_index": e["index"], "url": extra, "text": e["text"]})
+
     def _run(job_id):
         results, failed = [], []
-        total = len(entries)
-        for n, e in enumerate(entries):
+        # aggregate per segment_index
+        agg = {}
+        total = len(jobs)
+        for n, job in enumerate(jobs):
             job_manager.update(job_id, progress=int(n / total * 90),
-                               message=f"[{n + 1}/{total}] Mengunduh {e['url'][:70]}…")
+                               message=f"[{n + 1}/{total}] Mengunduh {job['url'][:70]}…")
             try:
                 dest = UPLOADS_DIR / f"{uuid.uuid4().hex}_script_yt.mp4"
                 ydl_opts = {"format": "best[height<=1080]", "outtmpl": str(dest), "quiet": True}
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    info = ydl.extract_info(e["url"], download=True)
+                    info = ydl.extract_info(job["url"], download=True)
                 topic = " ".join((info or {}).get("title", "").split()[:4])
                 files = footage_extractor.extract_clips(
                     str(dest), output_dir=output_dir, threshold=27.0,
                     min_duration_sec=2.0, base_name=None, topic=topic)
-                results.append({"segment_index": e["index"], "url": e["url"],
-                                "count": len(files), "files": files})
+                agg.setdefault(job["segment_index"], {"count": 0, "files": []})
+                agg[job["segment_index"]]["count"] += len(files)
+                agg[job["segment_index"]]["files"].extend(files)
             except Exception as ex:
-                print(f"[from_script] seg {n} gagal: {ex}")
-                failed.append({"segment_index": e["index"], "url": e["url"], "error": str(ex)})
-                results.append({"segment_index": e["index"], "url": e["url"],
-                                "count": 0, "files": [], "error": str(ex)})
+                print(f"[from_script] job {n} gagal: {ex}")
+                failed.append({"segment_index": job["segment_index"], "url": job["url"], "error": str(ex)})
+        for e in entries:
+            r = agg.get(e["index"], {"count": 0, "files": []})
+            results.append({"segment_index": e["index"], "url": e["url"],
+                            "count": r["count"], "files": r["files"]})
         return {
-            "segments": results, "total": len(entries),
+            "segments": results, "total": len(jobs),
             "ok": sum(1 for r in results if r["count"]),
             "failed": failed, "output_dir": output_dir,
         }
 
     job_manager.run_async(job_id, _run)
-    return {"job_id": job_id, "segments": entries, "found": len(entries)}
+    return {"job_id": job_id, "segments": entries, "found": len(entries), "total_urls": len(jobs)}
 
 
 # ============================================================

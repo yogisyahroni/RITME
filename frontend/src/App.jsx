@@ -851,7 +851,7 @@ function StageScript({ template, script, setScript, onNext, onScriptJob }) {
           <span style={{ fontFamily: F.mono, fontSize: 10, color: C.amber, letterSpacing: "0.08em" }}>SKRIP LENGKAP + LINK YOUTUBE → AUTO FOOTAGE</span>
           <h3 style={{ fontFamily: F.display, fontSize: 16, color: C.paper, fontWeight: 700, marginTop: 4 }}>Tempel Skrip + Rekomendasi Video</h3>
           <p style={{ fontFamily: F.body, fontSize: 12, color: C.paperDim, marginTop: 3 }}>
-            Punya skrip full dengan link YouTube per bagian? Tempel di sini — tiap bagian (pisah baris kosong) yang punya link otomatis di-download & di-extract jadi footage, siap di-match di Tahap 4.
+            Tempel skrip full (bisa format heading per bab: <span style={{ fontFamily: F.mono, fontSize: 11, color: C.cyan }}>## BAB 1</span> dst.) — link YouTube di dalam bab atau di bagian referensi otomatis di-download & di-extract jadi footage, siap di-match di Tahap 4. Link di referensi di-map ke bab paling relevan.
           </p>
         </div>
         <textarea rows={6} placeholder={"Contoh:\n\nBagian 1 — Sejarah Kopi\nhttps://www.youtube.com/watch?v=...\nKopi adalah minuman yang...\n\nBagian 2 — Proses Panen\nhttps://youtu.be/..."}
