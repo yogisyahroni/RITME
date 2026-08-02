@@ -474,13 +474,59 @@ function StageScript({ template, script, setScript, onNext, onScriptJob }) {
   const [styles, setStyles] = useState([]);
   const [styleId, setStyleId] = useState(null); // null = default flat style
   const [language, setLanguage] = useState("id");
-  // Fase 1B.3: footage attached to the same submit, extracted in parallel.
   const [footageMode, setFootageMode] = useState("none"); // none | file | youtube
   const [footageFile, setFootageFile] = useState(null);
   const [footageYoutubeUrl, setFootageYoutubeUrl] = useState("");
   const [footageExtraction, setFootageExtraction] = useState(null);
   const [job, setJob] = useState(null);
   const [error, setError] = useState(null);
+  // Skrip lengkap + link YouTube → auto extract footage
+  const [scriptText, setScriptText] = useState("");
+  const [scriptExtract, setScriptExtract] = useState(null); // {job_id|result, progress, message, error, found}
+
+  useEffect(() => {
+    if (!scriptExtract?.job_id) return;
+    let cancelled = false;
+    let timer = null;
+    const tick = async () => {
+      if (cancelled) return;
+      try {
+        const j = await (await fetch(`/api/jobs/${scriptExtract.job_id}`)).json();
+        if (cancelled) return;
+        if (j.status === "done") {
+          setScriptExtract({ job_id: null, result: j.result });
+        } else if (j.status === "error") {
+          setScriptExtract({ job_id: null, error: j.error || "Ekstraksi gagal" });
+        } else {
+          setScriptExtract(prev => ({ ...prev, progress: j.progress, message: j.message }));
+          timer = setTimeout(tick, 900);
+        }
+      } catch (e) {
+        if (!cancelled) setScriptExtract({ job_id: null, error: String(e) });
+      }
+    };
+    tick();
+    return () => { cancelled = true; if (timer) clearTimeout(timer); };
+  }, [scriptExtract?.job_id]);
+
+  const runScriptExtract = async () => {
+    setError(null);
+    try {
+      const res = await fetch("/api/footage/from_script", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ script_text: scriptText }),
+      });
+      if (!res.ok) {
+        const t = await res.text();
+        throw new Error(t.length > 300 ? t.slice(0, 300) : t);
+      }
+      const data = await res.json();
+      setScriptExtract({ job_id: data.job_id, found: data.found });
+    } catch (e) {
+      setError(String(e));
+    }
+  };
   const cancelRef = useRef(null);
 
   const downloadScriptText = () => {
@@ -799,6 +845,42 @@ function StageScript({ template, script, setScript, onNext, onScriptJob }) {
           </div>
         </>
       )}
+
+      <div className="mt-8 flex flex-col gap-3 p-5 rounded" style={{ background: C.panel, border: `1px solid ${C.borderSoft}` }}>
+        <div>
+          <span style={{ fontFamily: F.mono, fontSize: 10, color: C.amber, letterSpacing: "0.08em" }}>SKRIP LENGKAP + LINK YOUTUBE → AUTO FOOTAGE</span>
+          <h3 style={{ fontFamily: F.display, fontSize: 16, color: C.paper, fontWeight: 700, marginTop: 4 }}>Tempel Skrip + Rekomendasi Video</h3>
+          <p style={{ fontFamily: F.body, fontSize: 12, color: C.paperDim, marginTop: 3 }}>
+            Punya skrip full dengan link YouTube per bagian? Tempel di sini — tiap bagian (pisah baris kosong) yang punya link otomatis di-download & di-extract jadi footage, siap di-match di Tahap 4.
+          </p>
+        </div>
+        <textarea rows={6} placeholder={"Contoh:\n\nBagian 1 — Sejarah Kopi\nhttps://www.youtube.com/watch?v=...\nKopi adalah minuman yang...\n\nBagian 2 — Proses Panen\nhttps://youtu.be/..."}
+          value={scriptText} onChange={(e) => setScriptText(e.target.value)}
+          className="w-full px-3 py-2.5 rounded resize-y" style={{ background: C.bg, border: `1px solid ${C.borderSoft}`, color: C.paper, fontFamily: F.mono, fontSize: 12, lineHeight: 1.6, outline: "none" }} />
+        {scriptExtract?.progress !== undefined && scriptExtract?.job_id && (
+          <ProgressBar progress={scriptExtract.progress} message={scriptExtract.message} />
+        )}
+        {scriptExtract?.result && (
+          <div className="flex flex-col gap-1.5 p-3 rounded" style={{ background: C.panelRaised, border: `1px solid ${C.cyan}` }}>
+            <span style={{ fontFamily: F.mono, fontSize: 11, color: C.cyan }}>
+              ✓ Selesai: {scriptExtract.result.ok}/{scriptExtract.result.total} bagian berhasil diekstrak → {scriptExtract.result.output_dir}
+            </span>
+            {scriptExtract.result.segments.map((r, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <span style={{ fontFamily: F.mono, fontSize: 10.5, color: r.count ? C.cyan : C.red, flexShrink: 0 }}>{r.count ? `✓ ${r.count} clip` : "✗ gagal"}</span>
+                <span style={{ fontFamily: F.mono, fontSize: 10, color: C.paperFaint, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.url}</span>
+              </div>
+            ))}
+            <span style={{ fontFamily: F.body, fontSize: 11, color: C.paperFaint }}>Footage ini otomatis dipakai saat match di Tahap 4 (Footage Matching Board).</span>
+          </div>
+        )}
+        {scriptExtract?.error && <ErrorBanner error={scriptExtract.error} />}
+        <div className="flex justify-end">
+          <PrimaryButton onClick={runScriptExtract} icon={Clapperboard} disabled={!scriptText.trim() || !!scriptExtract?.job_id} loading={!!scriptExtract?.job_id}>
+            Ekstrak Footage dari Skrip
+          </PrimaryButton>
+        </div>
+      </div>
     </div>
   );
 }
@@ -831,29 +913,15 @@ async function extractWaveform(audioUrl, barCount = 72) {
 }
 
 function StageNarration({ script, narration, setNarration, onNext }) {
-  const [ttsProvider, setTtsProvider] = useState("pyttsx3");
+  const [mode, setMode] = useState("full");           // full | perseg
   const [job, setJob] = useState(null);
   const [error, setError] = useState(null);
   const [waveform, setWaveform] = useState(null);
-  const [audioFile, setAudioFile] = useState(null);
-  const [voices, setVoices] = useState([]);        // Fase 5.1: daftar voice provider
-  const [perSegVoices, setPerSegVoices] = useState({}); // segIdx -> voice id
+  const [audioFile, setAudioFile] = useState(null);   // mode full: 1 file
+  const [perSegFiles, setPerSegFiles] = useState({}); // segIdx -> File
   const cancelRef = useRef(null);
 
   useEffect(() => () => cancelRef.current && cancelRef.current(), []);
-
-  // Fase 5.1: ambil daftar voice saat provider TTS berubah
-  useEffect(() => {
-    if (ttsProvider === "upload") { setVoices([]); return; }
-    let cancelled = false;
-    fetch(`/api/narration/voices?provider=${encodeURIComponent(ttsProvider)}`)
-      .then(r => r.ok ? r.json() : null)
-      .then(data => { if (!cancelled && data) setVoices(data.voices || []); })
-      .catch(() => {});
-    return () => { cancelled = true; };
-  }, [ttsProvider]);
-
-  const pickVoice = (i, vid) => setPerSegVoices(prev => ({ ...prev, [i]: vid }));
 
   useEffect(() => {
     if (narration?.audio_url) {
@@ -861,38 +929,39 @@ function StageNarration({ script, narration, setNarration, onNext }) {
     }
   }, [narration]);
 
-  const runGenerate = async () => {
+  const runUpload = async () => {
     setError(null);
     setJob({ progress: 5, message: "Memulai…" });
     try {
-      let job_id;
-      if (ttsProvider === "upload") {
+      const fd = new FormData();
+      fd.append("segments", JSON.stringify(script.segments));
+      if (mode === "full") {
         if (!audioFile) {
           throw new Error("Silakan pilih file audio terlebih dahulu.");
         }
-        const fd = new FormData();
         fd.append("audio", audioFile);
-        fd.append("segments", JSON.stringify(script.segments));
-        
-        const res = await fetch("/api/narration/upload", {
-          method: "POST",
-          body: fd,
-        });
-        if (!res.ok) {
-          const t = await res.text();
-          throw new Error(t);
-        }
-        const data = await res.json();
-        job_id = data.job_id;
       } else {
-        const data = await apiPostJSON("/api/narration/generate", {
-          segments: script.segments, tts_provider: ttsProvider,
-          voices: script.segments.map((_, i) => perSegVoices[i] || ""),
+        const entries = script.segments.map((_, i) => [i, perSegFiles[i]]).filter(([, f]) => f);
+        if (!entries.length) {
+          throw new Error("Pilih minimal 1 file audio segmen.");
+        }
+        entries.forEach(([i, f]) => {
+          fd.append("audio_files", f);
         });
-        job_id = data.job_id;
+        fd.append("seg_indices", JSON.stringify(entries.map(([i]) => i)));
       }
-      
-      cancelRef.current = pollJob(job_id, {
+
+      const res = await fetch("/api/narration/upload", {
+        method: "POST",
+        body: fd,
+      });
+      if (!res.ok) {
+        const t = await res.text();
+        throw new Error(t.length > 300 ? t.slice(0, 300) : t);
+      }
+      const data = await res.json();
+
+      cancelRef.current = pollJob(data.job_id, {
         onUpdate: (j) => setJob({ progress: j.progress, message: j.message }),
         onDone: (result) => { setJob(null); setNarration(result); },
         onError: (err) => { setJob(null); setError(err); },
@@ -913,48 +982,62 @@ function StageNarration({ script, narration, setNarration, onNext }) {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <Eyebrow n={3}>NARRATION BOOTH</Eyebrow>
-        <h2 style={{ fontFamily: F.display, fontSize: 22, color: C.paper, fontWeight: 700 }}>Generate Suara & Timing</h2>
+        <Eyebrow n={3}>NARRATION — UPLOAD SUARA</Eyebrow>
+        <h2 style={{ fontFamily: F.display, fontSize: 22, color: C.paper, fontWeight: 700 }}>Upload Suara Narasi</h2>
+        <p style={{ fontFamily: F.body, fontSize: 12.5, color: C.paperDim, marginTop: 4 }}>
+          Tanpa TTS — pakai rekaman suara sendiri, auto-sync ke segmen skrip.
+        </p>
       </div>
 
       {!narration && (
         <div className="flex flex-col gap-3">
           <div className="flex gap-2">
-            {[{ id: "pyttsx3", label: "pyttsx3 · gratis" }, { id: "f5tts", label: "F5-TTS · local" }, { id: "omnivoice", label: "OmniVoice · local" }, { id: "elevenlabs", label: "ElevenLabs · premium" }, { id: "upload", label: "Upload Sendiri" }].map((opt) => (
-              <button key={opt.id} onClick={() => setTtsProvider(opt.id)} className="px-4 py-2 rounded"
-                style={{ fontFamily: F.body, fontSize: 12.5, fontWeight: 600, cursor: "pointer", background: ttsProvider === opt.id ? C.tally : C.panel, color: ttsProvider === opt.id ? C.paper : C.paperDim, border: `1px solid ${ttsProvider === opt.id ? C.tally : C.borderSoft}` }}>
+            {[{ id: "full", label: "1 File Audio · Auto-Sync" }, { id: "perseg", label: "Per Segmen · N File" }].map((opt) => (
+              <button key={opt.id} onClick={() => setMode(opt.id)} className="px-4 py-2 rounded"
+                style={{ fontFamily: F.body, fontSize: 12.5, fontWeight: 600, cursor: "pointer", background: mode === opt.id ? C.tally : C.panel, color: mode === opt.id ? C.paper : C.paperDim, border: `1px solid ${mode === opt.id ? C.tally : C.borderSoft}` }}>
                 {opt.label}
               </button>
             ))}
           </div>
-          {ttsProvider === "upload" && (
+
+          {mode === "full" && (
             <div className="flex flex-col gap-2 p-4 rounded" style={{ background: "rgba(255,255,255,0.02)", border: `1px dashed ${C.borderSoft}` }}>
-              <label style={{ fontFamily: F.body, fontSize: 13, color: C.paperDim }}>Pilih file rekaman suara Anda (.wav, .mp3, .m4a)</label>
+              <span style={{ fontFamily: F.mono, fontSize: 10, color: C.amber, letterSpacing: "0.08em" }}>1 FILE AUDIO PENUH</span>
+              <label style={{ fontFamily: F.body, fontSize: 13, color: C.paperDim }}>Rekaman narasi utuh (.wav, .mp3, .m4a) — Whisper menyelaraskan tiap kalimat ke segmen skrip.</label>
               <input type="file" accept="audio/*" onChange={(e) => setAudioFile(e.target.files[0])} style={{ color: C.paper }} />
+              {audioFile && <span style={{ fontFamily: F.mono, fontSize: 11, color: C.cyan }}>✓ {audioFile.name} ({(audioFile.size / 1024 / 1024).toFixed(1)} MB)</span>}
             </div>
           )}
-          {ttsProvider !== "upload" && voices.length > 0 && script.segments.length > 0 && (
-            <div className="flex flex-col gap-2 p-4 rounded" style={{ background: "rgba(255,255,255,0.02)", border: `1px solid ${C.borderSoft}` }}>
-              <span style={{ fontFamily: F.mono, fontSize: 10, color: C.amber, letterSpacing: "0.08em" }}>MULTI-VOICE · suara per segmen</span>
-              <div className="flex flex-col gap-1.5">
+
+          {mode === "perseg" && (
+            <div className="flex flex-col gap-2 p-4 rounded" style={{ background: "rgba(255,255,255,0.02)", border: `1px dashed ${C.borderSoft}` }}>
+              <span style={{ fontFamily: F.mono, fontSize: 10, color: C.amber, letterSpacing: "0.08em" }}>AUDIO PER SEGMEN</span>
+              <div className="flex flex-col gap-2">
                 {script.segments.map((seg, i) => (
                   <div key={i} className="flex items-center gap-3">
-                    <span style={{ fontFamily: F.mono, fontSize: 10.5, color: C.paperFaint, width: 64, flexShrink: 0 }}>Seg {i + 1}</span>
-                    <select value={perSegVoices[i] || ""} onChange={e => pickVoice(i, e.target.value)}
-                      style={{ flex: 1, fontFamily: F.body, fontSize: 12, color: C.paper, background: C.panel, border: `1px solid ${C.borderSoft}`, borderRadius: 6, padding: "6px 8px", outline: "none" }}>
-                      <option value="">Default ({voices[0]?.name || "auto"})</option>
-                      {voices.map(v => <option key={v.id} value={v.id}>{v.name}{v.lang ? ` · ${v.lang}` : ""}</option>)}
-                    </select>
-                    <span style={{ fontFamily: F.body, fontSize: 11, color: C.paperFaint, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 220 }}>{seg.text}</span>
+                    <span style={{ fontFamily: F.mono, fontSize: 10.5, color: C.paperFaint, width: 52, flexShrink: 0 }}>Seg {i + 1}</span>
+                    <label className="flex-1 flex items-center gap-2 px-3 py-2 rounded cursor-pointer" style={{ background: C.panel, border: `1px solid ${perSegFiles[i] ? C.tally : C.borderSoft}` }}>
+                      <Upload size={13} color={perSegFiles[i] ? C.tally : C.paperDim} />
+                      <span style={{ fontFamily: F.body, fontSize: 11.5, color: perSegFiles[i] ? C.paper : C.paperFaint, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0, flex: 1 }}>
+                        {perSegFiles[i] ? perSegFiles[i].name : "Pilih audio segmen ini…"}
+                      </span>
+                      <input type="file" accept="audio/*" style={{ display: "none" }} onChange={e => { const f = e.target.files?.[0]; if (f) setPerSegFiles(prev => ({ ...prev, [i]: f })); }} />
+                    </label>
+                    <span style={{ fontFamily: F.body, fontSize: 11, color: C.paperFaint, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 180 }}>{seg.text}</span>
                   </div>
                 ))}
               </div>
-              <span style={{ fontFamily: F.body, fontSize: 11, color: C.paperFaint }}>Kosongkan = default. Bisa beda suara tiap segmen (skit/dialog/narrator).</span>
+              <span style={{ fontFamily: F.body, fontSize: 11, color: C.paperFaint }}>Bisa pilih acak per segmen (yang kosong di-skip).</span>
             </div>
           )}
-          {error && <ErrorBanner error={error} onRetry={runGenerate} />}
+
+          {error && <ErrorBanner error={error} onRetry={runUpload} />}
           {job && <ProgressBar progress={job.progress} message={job.message} />}
-          {!job && <PrimaryButton onClick={runGenerate} icon={Mic}>{ttsProvider === "upload" ? "Selaraskan Audio" : "Generate Suara"}</PrimaryButton>}
+          {!job && (
+            <PrimaryButton onClick={runUpload} icon={Upload} disabled={mode === "full" ? !audioFile : !script.segments.some((_, i) => perSegFiles[i])}>
+              {mode === "full" ? "Upload + Auto-Sync" : "Upload Per Segmen"}
+            </PrimaryButton>
+          )}
         </div>
       )}
 
@@ -988,7 +1071,7 @@ function StageNarration({ script, narration, setNarration, onNext }) {
 
           <div className="flex items-center justify-between mt-4">
             <button onClick={() => setNarration(null)} className="flex items-center gap-1.5 px-3 py-1.5 rounded hover:bg-white/5 transition-colors" style={{ fontFamily: F.body, fontSize: 12, color: C.paperDim, border: `1px solid ${C.borderSoft}` }}>
-              <RefreshCw size={14} /> Generate ulang
+              <RefreshCw size={14} /> Upload ulang
             </button>
             <PrimaryButton onClick={onNext} icon={ChevronRight}>Lanjut ke Footage</PrimaryButton>
           </div>
@@ -1456,25 +1539,42 @@ function StudioPage() {
 
   return (
     <>
-      <div className="px-4 sm:px-6 pt-5 max-w-3xl mx-auto flex items-center justify-between">
-        <span style={{ fontFamily: F.mono, fontSize: 10, color: C.paperFaint, letterSpacing: "0.08em" }}>
-          PIPELINE STUDIO — 5 TAHAP
-        </span>
-        <button onClick={handleReset} className="flex items-center gap-1.5 px-3 py-1.5 rounded" style={{ background: "transparent", border: "none", color: C.red, cursor: "pointer", opacity: 0.8 }} onMouseEnter={e => e.currentTarget.style.opacity = 1} onMouseLeave={e => e.currentTarget.style.opacity = 0.8}>
-          <Trash2 size={12} />
-          <span style={{ fontFamily: F.mono, fontSize: 10 }}>Reset Project</span>
-        </button>
-      </div>
+      {active === 5 && narration && footageData ? (
+        /* ── EDITOR WORKSPACE (CapCut-style, fullscreen) ── */
+        <div className="w-full">
+          <div className="flex items-center justify-between px-4 sm:px-6 pt-4 max-w-[1800px] mx-auto">
+            <button onClick={() => setActive(4)} className="flex items-center gap-1.5 px-3 py-1.5 rounded" style={{ background: C.panel, border: `1px solid ${C.borderSoft}`, color: C.paperDim, cursor: "pointer" }}>
+              <ArrowLeft size={14} />
+              <span style={{ fontFamily: F.mono, fontSize: 10 }}>Kembali ke Footage</span>
+            </button>
+            <span style={{ fontFamily: F.mono, fontSize: 10, color: C.paperFaint, letterSpacing: "0.08em" }}>
+              EDITOR — ATUR ALUR CLIP BEBAS (drag · trim · split · zoom)
+            </span>
+          </div>
+          <TimelineEditor narration={narration} footageData={footageData} picks={picks} />
+        </div>
+      ) : (
+        <>
+          <div className="px-4 sm:px-6 pt-5 max-w-3xl mx-auto flex items-center justify-between">
+            <span style={{ fontFamily: F.mono, fontSize: 10, color: C.paperFaint, letterSpacing: "0.08em" }}>
+              PIPELINE STUDIO — 5 TAHAP
+            </span>
+            <button onClick={handleReset} className="flex items-center gap-1.5 px-3 py-1.5 rounded" style={{ background: "transparent", border: "none", color: C.red, cursor: "pointer", opacity: 0.8 }} onMouseEnter={e => e.currentTarget.style.opacity = 1} onMouseLeave={e => e.currentTarget.style.opacity = 0.8}>
+              <Trash2 size={12} />
+              <span style={{ fontFamily: F.mono, fontSize: 10 }}>Reset Project</span>
+            </button>
+          </div>
 
-      <StageNav active={active} setActive={setActive} maxUnlocked={maxUnlocked} />
+          <StageNav active={active} setActive={setActive} maxUnlocked={maxUnlocked} />
 
-      <div className={`px-4 sm:px-6 py-6 ${active === 5 ? "max-w-7xl" : "max-w-3xl"} mx-auto`}>
-        {active === 1 && <StageTemplate template={template} setTemplate={setTemplate} onNext={goNext} />}
-        {active === 2 && template && <StageScript template={template} script={script} setScript={setScript} onNext={goNext} onScriptJob={setScriptJobId} />}
-        {active === 3 && script && <StageNarration script={script} narration={narration} setNarration={setNarration} onNext={goNext} />}
-        {active === 4 && narration && <StageFootage narration={narration} footageData={footageData} setFootageData={setFootageData} picks={picks} setPicks={setPicks} onNext={goNext} scriptJobId={scriptJobId} />}
-        {active === 5 && narration && footageData && <TimelineEditor narration={narration} footageData={footageData} picks={picks} />}
-      </div>
+          <div className="px-4 sm:px-6 py-6 max-w-3xl mx-auto">
+            {active === 1 && <StageTemplate template={template} setTemplate={setTemplate} onNext={goNext} />}
+            {active === 2 && template && <StageScript template={template} script={script} setScript={setScript} onNext={goNext} onScriptJob={setScriptJobId} />}
+            {active === 3 && script && <StageNarration script={script} narration={narration} setNarration={setNarration} onNext={goNext} />}
+            {active === 4 && narration && <StageFootage narration={narration} footageData={footageData} setFootageData={setFootageData} picks={picks} setPicks={setPicks} onNext={goNext} scriptJobId={scriptJobId} />}
+          </div>
+        </>
+      )}
     </>
   );
 }

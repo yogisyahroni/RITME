@@ -19,6 +19,7 @@ Design notes:
   no CORS configuration to worry about.
 """
 import os
+import re
 import shutil
 import sys
 import uuid
@@ -350,30 +351,100 @@ def generate_narration(req: NarrationRequest):
 
 @app.post("/api/narration/upload")
 async def upload_narration(
-    audio: UploadFile = File(...),
-    segments: str = Form(...)
+    audio: UploadFile | None = File(None),
+    audio_files: list[UploadFile] = File(default=[]),
+    segments: str = Form(...),
+    seg_indices: str = Form("[]")
 ):
+    """Upload suara — 2 mode:
+    - `audio` (1 file, full track): Whisper auto-sync ke segmen (timing per kata).
+    - `audio_files` (N file, per segmen): tiap file jadi audio segmen-nya,
+      timing = durasi file kumulatif (tanpa Whisper, cepat).
+      `seg_indices` = JSON array index segmen untuk tiap file (default: berurutan).
+    """
     import json
     segs = json.loads(segments)
-    
+    idx_map = json.loads(seg_indices) if seg_indices.strip() else []
+    job_id = job_manager.create()
+
+    # Mode B — per-segment audio files
+    if audio_files:
+        # Baca bytes DI HANDLER (UploadFile handle mati setelah return —
+        # background thread cuma dapat bytes, bukan file handle).
+        uploads = []
+        for f in audio_files:
+            _validate_upload(f, ALLOWED_AUDIO_TYPES)
+            uploads.append((f.filename or f"seg_{len(uploads)}.wav", f.file.read()))
+
+        def _run_per_segment(job_id):
+            audio_dir = CACHE_DIR / "audio"
+            audio_dir.mkdir(parents=True, exist_ok=True)
+            paths, durs, seg_idx = [], [], []
+            total = len(uploads)
+            for i, (fname, data) in enumerate(uploads):
+                ext = Path(fname).suffix.lower() or ".wav"
+                dest = audio_dir / f"seg_{i}_{uuid.uuid4().hex}{ext}"
+                with open(dest, "wb") as fh:
+                    fh.write(data)
+                d = stage3_narration.audio_duration(str(dest))
+                paths.append(str(dest))
+                durs.append(d)
+                seg_idx.append(idx_map[i] if i < len(idx_map) else i)
+                job_manager.update(job_id, progress=int((i + 1) / total * 60),
+                                   message=f"Upload audio segmen {i + 1}/{total}…")
+            # cumulative windows per segment (hanya segmen ber-audio yang jalan)
+            timed, t = [], 0.0
+            for i, seg in enumerate(segs):
+                if i in seg_idx:
+                    j = seg_idx.index(i)
+                    d = durs[j]
+                    timed.append({**seg, "start": t, "end": t + d,
+                                  "audio_path": paths[j]})
+                    t += d
+                else:
+                    timed.append({**seg, "start": t, "end": t,
+                                  "audio_path": None})
+            # full track gabungan (buat preview & music ducking)
+            if len(paths) == 1:
+                audio_path = paths[0]
+            else:
+                try:
+                    audio_path = stage3_narration.concat_audio_files(
+                        paths, str(audio_dir / "narration_upload.wav"))
+                except Exception as e:
+                    print(f"[server] per-segment concat failed ({e})")
+                    audio_path = paths[0] if paths else ""
+            return {
+                "audio_path": audio_path,
+                "audio_url": f"/outputs/audio/{Path(audio_path).name}" if audio_path else "",
+                "segments": timed,
+                "segment_audio_paths": paths,
+                "segment_audio_durations": durs,
+            }
+
+        job_manager.run_async(job_id, _run_per_segment)
+        return {"job_id": job_id}
+
+    # Mode A — single full audio, Whisper auto-sync
+    if audio is None:
+        raise HTTPException(400, "Butuh `audio` (1 file penuh) atau `audio_files` (per segmen).")
+
     ext = Path(audio.filename).suffix
     audio_dir = CACHE_DIR / "audio"
     audio_dir.mkdir(parents=True, exist_ok=True)
     _validate_upload(audio, ALLOWED_AUDIO_TYPES)
     dest = audio_dir / f"upload_{uuid.uuid4().hex}{ext}"
-    
+
     with open(dest, "wb") as f:
         shutil.copyfileobj(audio.file, f)
-        
-    job_id = job_manager.create()
 
     def _run(job_id):
         job_manager.update(job_id, message="Menyelaraskan teks dengan audio (Whisper)…", progress=30)
         word_timestamps = stage3_narration.transcribe_with_timestamps(str(dest))
-        
+
         job_manager.update(job_id, message="Menyusun timing segmen…", progress=80)
         timed = stage3_narration.align_keywords_to_timestamps(segs, word_timestamps)
-        
+
         return {"audio_path": str(dest), "audio_url": f"/outputs/audio/{dest.name}", "segments": timed}
 
     job_manager.run_async(job_id, _run)
@@ -505,6 +576,80 @@ async def extract_youtube_footage(req: YoutubeExtractRequest):
 
     job_manager.run_async(job_id, _run)
     return {"job_id": job_id}
+
+
+# ============================================================
+# Footage dari Skrip Lengkap — skrip punya link YouTube per bagian,
+# otomatis download tiap link lalu extract clips (1 job, sequential).
+# ============================================================
+class ScriptFootageRequest(BaseModel):
+    script_text: str
+
+
+_YOUTUBE_URL_RE = re.compile(
+    r"https?://(?:www\.)?(?:youtube\.com/(?:watch\?v=|shorts/|live/|embed/)|youtu\.be/)[^\s\"'<>]+"
+)
+
+
+def _find_yt_urls(text: str) -> list[str]:
+    """Ambil URL YouTube valid dari teks (SSRF-guarded, skip yang invalid)."""
+    out = []
+    for u in _YOUTUBE_URL_RE.findall(text):
+        try:
+            _validate_youtube_url(u)
+            out.append(u)
+        except Exception:
+            continue  # URL gak valid / bukan youtube — skip diam-diam
+    return out
+
+
+@app.post("/api/footage/from_script")
+def extract_footage_from_script(req: ScriptFootageRequest):
+    import yt_dlp
+
+    # Pisah skrip per bagian (blank line), cari URL YouTube tiap bagian
+    raw_segs = [s.strip() for s in re.split(r"\n\s*\n", req.script_text) if s.strip()]
+    entries = []
+    for i, seg in enumerate(raw_segs):
+        urls = _find_yt_urls(seg)
+        if urls:
+            entries.append({"index": i, "text": seg[:200], "url": urls[0], "extra_urls": urls[1:]})
+    if not entries:
+        raise HTTPException(400, "Tidak ada link YouTube valid ditemukan di skrip. Pastikan tiap bagian punya link youtube.com atau youtu.be.")
+
+    job_id = job_manager.create()
+    output_dir = "outputs/extracted_footage"
+
+    def _run(job_id):
+        results, failed = [], []
+        total = len(entries)
+        for n, e in enumerate(entries):
+            job_manager.update(job_id, progress=int(n / total * 90),
+                               message=f"[{n + 1}/{total}] Mengunduh {e['url'][:70]}…")
+            try:
+                dest = UPLOADS_DIR / f"{uuid.uuid4().hex}_script_yt.mp4"
+                ydl_opts = {"format": "best[height<=1080]", "outtmpl": str(dest), "quiet": True}
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    info = ydl.extract_info(e["url"], download=True)
+                topic = " ".join((info or {}).get("title", "").split()[:4])
+                files = footage_extractor.extract_clips(
+                    str(dest), output_dir=output_dir, threshold=27.0,
+                    min_duration_sec=2.0, base_name=None, topic=topic)
+                results.append({"segment_index": e["index"], "url": e["url"],
+                                "count": len(files), "files": files})
+            except Exception as ex:
+                print(f"[from_script] seg {n} gagal: {ex}")
+                failed.append({"segment_index": e["index"], "url": e["url"], "error": str(ex)})
+                results.append({"segment_index": e["index"], "url": e["url"],
+                                "count": 0, "files": [], "error": str(ex)})
+        return {
+            "segments": results, "total": len(entries),
+            "ok": sum(1 for r in results if r["count"]),
+            "failed": failed, "output_dir": output_dir,
+        }
+
+    job_manager.run_async(job_id, _run)
+    return {"job_id": job_id, "segments": entries, "found": len(entries)}
 
 
 # ============================================================
