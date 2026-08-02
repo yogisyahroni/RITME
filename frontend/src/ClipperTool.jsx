@@ -233,13 +233,17 @@ export default function ClipperTool({ onClose, variant = "modal" }) {
                     <button onClick={() => setPreviewClip(null)} style={{ fontFamily: F.mono, fontSize: 11, color: C.paperDim, background: "none", border: "none", cursor: "pointer" }}>✕ Tutup</button>
                   </div>
                   {videoUrl && (
-                    <div className="flex items-center justify-center" style={{ background: "#000", padding: "14px 0" }}>
-                      <div style={{ height: 400, aspectRatio: aspect === "1:1" ? "1 / 1" : aspect === "16:9" ? "16 / 9" : "9 / 16", maxWidth: "100%" }}>
+                    <div className="flex items-center justify-center" style={{
+                      background: "radial-gradient(circle, #1E1B15 0%, #15130F 70%)",
+                      padding: "16px 0", minHeight: 460,
+                    }}>
+                      <div style={{ height: "min(520px, 70vh)", aspectRatio: aspect === "1:1" ? "1 / 1" : aspect === "16:9" ? "16 / 9" : "9 / 16", maxWidth: "100%", boxShadow: "0 8px 32px rgba(0,0,0,0.6)", borderRadius: 6, overflow: "hidden" }}>
                         <video
                           key={`${previewClip}-${aspect}`}
                           src={videoUrl}
                           controls
                           autoPlay
+                          playsInline
                           style={{ width: "100%", height: "100%", objectFit: "cover", background: "#000", display: "block" }}
                           onLoadedMetadata={(e) => {
                             try { e.currentTarget.currentTime = clips[previewClip].start + 0.05; e.currentTarget.play().catch(() => {}); } catch (_) {}
