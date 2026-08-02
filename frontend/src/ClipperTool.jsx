@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { X, Upload, Link2, Clapperboard, Loader2, AlertTriangle, Download, Check, Film, Scissors, Info, Zap, ArrowLeft, Play } from "lucide-react";
 
 const C = {
@@ -42,6 +42,63 @@ const ASPECTS = [
   { id: "16:9", label: "16:9 Horizontal (YouTube)", res: "1920×1080" },
   { id: "1:1", label: "1:1 Square (Feed)", res: "1080×1080" },
 ];
+
+/* ============================================================
+   TikTokCaption — karaoke 1 baris ala TikTok/Reels
+   - Window: 3 sebelum + aktif + 1 sesudah (max 5 kata, 1 baris)
+   - Semua kata yang SUDAH diomongin = KUNING (fill sampai akhir)
+   - Kata aktif = kuning full, lewat = kuning redup, depan = putih
+   - Font auto-fit (24→12px) biar SELALU muat 1 baris, gak pernah wrap
+   ============================================================ */
+function TikTokCaption({ words, activeWord }) {
+  const boxRef = useRef(null);
+  const [fs, setFs] = useState(24);
+
+  // window kata: 3 sebelum + aktif + 1 sesudah (aktif mendekati AKHIR baris,
+  // bukan tengah — biar fill kuning "sampai ke akhir")
+  const vis = useMemo(() => {
+    if (!words.length) return [];
+    if (activeWord < 0) return [0, 1, 2].filter(i => i < words.length);
+    const start = Math.max(0, activeWord - 3);
+    const end = Math.min(words.length - 1, activeWord + 1);
+    const arr = [];
+    for (let i = start; i <= end; i++) arr.push(i);
+    return arr;
+  }, [words, activeWord]);
+
+  // auto-fit font: mulai 24px, turunin sampai muat 1 baris (min 12px)
+  useLayoutEffect(() => {
+    const el = boxRef.current;
+    if (!el) return;
+    let size = 24;
+    el.style.fontSize = size + "px";
+    while (size > 12 && el.scrollWidth > el.clientWidth + 1) {
+      size -= 1;
+      el.style.fontSize = size + "px";
+    }
+    setFs(size);
+  }, [words, activeWord, vis]);
+
+  return (
+    <div ref={boxRef} style={{
+      display: "flex", flexWrap: "nowrap", justifyContent: "center", alignItems: "center",
+      gap: "2px 6px",
+      fontFamily: F.body, fontWeight: 800, fontSize: fs, lineHeight: 1.2,
+      background: "rgba(0,0,0,0.62)", borderRadius: 12, padding: "7px 14px",
+      maxWidth: "100%", width: "max-content", margin: "0 auto",
+      whiteSpace: "nowrap", overflow: "hidden",
+    }}>
+      {vis.map(i => (
+        <span key={i} style={{
+          color: i === activeWord ? "#ffd400"
+            : i < activeWord ? "rgba(255,212,0,0.72)"   // lewat = kuning redup (fill sampai akhir)
+            : "rgba(255,255,255,0.85)",                  // belum diomongin = putih
+          whiteSpace: "nowrap",
+        }}>{words[i].word}</span>
+      ))}
+    </div>
+  );
+}
 
 export default function ClipperTool({ onClose, variant = "modal" }) {
   const isPage = variant === "page";
@@ -297,7 +354,7 @@ export default function ClipperTool({ onClose, variant = "modal" }) {
                           }}
                         />
                         {/* Live caption overlay (selalu tampil di preview; toggle AutoCaption cuma kontrol burn di render) */}
-                        <div style={{ position: "absolute", left: 0, right: 0, bottom: 48, padding: "0 10px", textAlign: "center", pointerEvents: "none" }}>
+                        <div style={{ position: "absolute", left: 0, right: 0, bottom: "14%", padding: "0 10px", textAlign: "center", pointerEvents: "none" }}>
                             {capsLoading && (
                               <div className="flex items-center justify-center gap-2" style={{ fontFamily: F.body, fontSize: 12, color: C.paperDim, background: "rgba(0,0,0,0.55)", borderRadius: 20, padding: "6px 14px", display: "inline-flex" }}>
                                 <Loader2 size={13} className="animate-spin" /> Transkripsi clip…
@@ -309,27 +366,7 @@ export default function ClipperTool({ onClose, variant = "modal" }) {
                               </div>
                             )}
                             {!capsLoading && !capsError && previewWords && previewWords.length > 0 && (
-                              <div style={{
-                                display: "flex", flexWrap: "wrap", justifyContent: "center", alignItems: "center",
-                                gap: "2px 6px",
-                                fontFamily: F.body, fontWeight: 800, fontSize: 20, lineHeight: 1.4,
-                                background: "rgba(0,0,0,0.62)", borderRadius: 12, padding: "8px 16px",
-                                maxWidth: "100%", textAlign: "center",
-                              }}>
-                                {previewWords.map((w, i) => {
-                                  // TikTok style: max 5 kata (2 sebelum + aktif + 2 sesudah)
-                                  const vis = activeWord < 0
-                                    ? i < 3
-                                    : (i >= activeWord - 2 && i <= activeWord + 2);
-                                  if (!vis) return null;
-                                  return (
-                                    <span key={i} style={{
-                                      color: i === activeWord ? "#ffd400" : i < activeWord ? "#ffffff" : "rgba(255,255,255,0.75)",
-                                      whiteSpace: "nowrap",
-                                    }}>{w.word}</span>
-                                  );
-                                })}
-                              </div>
+                              <TikTokCaption words={previewWords} activeWord={activeWord} />
                             )}
                         </div>
                       </div>
