@@ -25069,47 +25069,6 @@
   function ErrorBanner({ error, onRetry }) {
     return /* @__PURE__ */ import_react6.default.createElement("div", { className: "flex items-start gap-2.5 px-4 py-3 rounded", style: { background: "#2A1712", border: `1px solid ${C4.tallyDim}` } }, /* @__PURE__ */ import_react6.default.createElement(TriangleAlert, { size: 15, color: C4.tally, style: { marginTop: 1, flexShrink: 0 } }), /* @__PURE__ */ import_react6.default.createElement("div", { className: "flex-1 flex flex-col gap-1.5" }, /* @__PURE__ */ import_react6.default.createElement("span", { style: { fontFamily: F4.body, fontSize: 12.5, color: C4.paper, fontWeight: 600 } }, "Gagal"), /* @__PURE__ */ import_react6.default.createElement("span", { style: { fontFamily: F4.mono, fontSize: 11, color: C4.paperDim, wordBreak: "break-word" } }, error)), onRetry && /* @__PURE__ */ import_react6.default.createElement("button", { onClick: onRetry, className: "flex-shrink-0", style: { fontFamily: F4.body, fontSize: 11.5, color: C4.cyan, background: "none", border: "none", cursor: "pointer" } }, "Coba lagi"));
   }
-  var STAGES = [
-    { id: 1, label: "TEMPLATE", icon: Film },
-    { id: 2, label: "SKRIP", icon: FileText },
-    { id: 3, label: "NARASI", icon: Mic },
-    { id: 4, label: "FOOTAGE", icon: ScanSearch },
-    { id: 5, label: "TIMELINE", icon: Clapperboard }
-  ];
-  function StageNav({ active, setActive, maxUnlocked }) {
-    return /* @__PURE__ */ import_react6.default.createElement("div", { className: "w-full overflow-x-auto", style: { borderBottom: `1px solid ${C4.border}` } }, /* @__PURE__ */ import_react6.default.createElement("div", { className: "flex items-stretch min-w-max relative px-4 sm:px-6", style: { height: 64 } }, /* @__PURE__ */ import_react6.default.createElement("div", { className: "absolute left-0 right-0", style: { top: 32, height: 1, background: C4.border, marginLeft: 24, marginRight: 24 } }), STAGES.map((s) => {
-      const isActive = s.id === active;
-      const isDone = s.id < maxUnlocked;
-      const isLocked = s.id > maxUnlocked;
-      const Icon2 = s.icon;
-      return /* @__PURE__ */ import_react6.default.createElement(
-        "button",
-        {
-          key: s.id,
-          onClick: () => !isLocked && setActive(s.id),
-          disabled: isLocked,
-          className: "flex flex-col items-center justify-center gap-1.5 relative px-4 sm:px-6",
-          style: { cursor: isLocked ? "default" : "pointer", background: "none", border: "none" }
-        },
-        /* @__PURE__ */ import_react6.default.createElement(
-          "div",
-          {
-            className: "flex items-center justify-center rounded-full relative",
-            style: {
-              width: 30,
-              height: 30,
-              background: isActive ? C4.tally : isDone ? C4.panelRaised : C4.panel,
-              border: `1.5px solid ${isActive ? C4.tally : isDone ? C4.cyan : C4.border}`,
-              boxShadow: isActive ? `0 0 0 3px ${C4.tallyDim}` : "none",
-              zIndex: 1
-            }
-          },
-          isDone ? /* @__PURE__ */ import_react6.default.createElement(Check, { size: 14, color: C4.cyan, strokeWidth: 2.5 }) : isLocked ? /* @__PURE__ */ import_react6.default.createElement(Lock, { size: 12, color: C4.paperFaint }) : /* @__PURE__ */ import_react6.default.createElement(Icon2, { size: 14, color: isActive ? C4.paper : C4.paperDim })
-        ),
-        /* @__PURE__ */ import_react6.default.createElement("span", { style: { fontFamily: F4.mono, fontSize: 10, letterSpacing: "0.06em", color: isActive ? C4.paper : isLocked ? C4.paperFaint : C4.paperDim, fontWeight: isActive ? 600 : 400 } }, String(s.id).padStart(2, "0"), " ", s.label)
-      );
-    })));
-  }
   function StageTemplate({ template, setTemplate, onNext }) {
     const [file, setFile] = (0, import_react6.useState)(null);
     const [name, setName] = (0, import_react6.useState)("my_style");
@@ -25738,19 +25697,55 @@ BABAK: ${actLabel}
     }, [jobId]);
     return /* @__PURE__ */ import_react6.default.createElement("div", { className: isPage ? "min-h-[calc(100vh-57px)]" : "fixed inset-0 z-50 flex justify-end", style: isPage ? void 0 : { background: "rgba(0,0,0,0.5)" } }, /* @__PURE__ */ import_react6.default.createElement("div", { className: isPage ? "w-full max-w-3xl mx-auto px-4 sm:px-6 py-6 flex flex-col gap-5" : "w-full max-w-md h-full flex flex-col shadow-2xl", style: isPage ? void 0 : { background: C4.bg, borderLeft: `1px solid ${C4.border}`, animation: "slideInRight 0.3s ease-out forwards" } }, /* @__PURE__ */ import_react6.default.createElement("style", null, `@keyframes slideInRight { from { transform: translateX(100%); } to { transform: translateX(0); } }`), /* @__PURE__ */ import_react6.default.createElement("div", { className: "flex items-center justify-between px-5 py-4", style: { background: C4.panel, borderBottom: `1px solid ${C4.border}` } }, /* @__PURE__ */ import_react6.default.createElement("div", { className: "flex items-center gap-3" }, /* @__PURE__ */ import_react6.default.createElement(Scissors, { size: 18, color: C4.tally }), /* @__PURE__ */ import_react6.default.createElement("span", { style: { fontFamily: F4.display, fontSize: 16, fontWeight: 700, color: C4.paper } }, "Ekstrak Footage")), isPage ? /* @__PURE__ */ import_react6.default.createElement("button", { onClick: onClose, className: "flex items-center gap-1.5 px-3 py-1.5 rounded", style: { background: C4.panelRaised, border: `1px solid ${C4.borderSoft}`, color: C4.paperDim, cursor: "pointer" } }, /* @__PURE__ */ import_react6.default.createElement(ArrowLeft, { size: 14 }), /* @__PURE__ */ import_react6.default.createElement("span", { style: { fontFamily: F4.mono, fontSize: 10 } }, "Kembali ke Studio")) : /* @__PURE__ */ import_react6.default.createElement("button", { onClick: onClose, style: { background: "none", border: "none", cursor: "pointer", color: C4.paperDim } }, /* @__PURE__ */ import_react6.default.createElement(X, { size: 20 }))), /* @__PURE__ */ import_react6.default.createElement("div", { className: isPage ? "flex flex-col gap-5" : "p-5 flex flex-col gap-5 overflow-y-auto flex-1" }, /* @__PURE__ */ import_react6.default.createElement("p", { style: { fontFamily: F4.body, fontSize: 13, color: C4.paperDim, lineHeight: 1.5 } }, 'Potong video panjang secara sekuensial. Hasil potongan akan bisa dicari otomatis oleh Tahap 4 berdasarkan "Kata Kunci Footage".'), /* @__PURE__ */ import_react6.default.createElement("div", { className: "flex gap-2 p-1 rounded", style: { background: C4.panel } }, /* @__PURE__ */ import_react6.default.createElement("button", { onClick: () => setInputType("file"), className: "flex-1 py-1.5 rounded", style: { border: "none", cursor: "pointer", background: inputType === "file" ? C4.borderSoft : "transparent", color: inputType === "file" ? C4.paper : C4.paperDim, fontSize: 12, fontWeight: 600 } }, "File Lokal"), /* @__PURE__ */ import_react6.default.createElement("button", { onClick: () => setInputType("youtube"), className: "flex-1 py-1.5 rounded", style: { border: "none", cursor: "pointer", background: inputType === "youtube" ? C4.borderSoft : "transparent", color: inputType === "youtube" ? C4.paper : C4.paperDim, fontSize: 12, fontWeight: 600 } }, "Link YouTube")), /* @__PURE__ */ import_react6.default.createElement("div", { className: "flex flex-col gap-1.5" }, /* @__PURE__ */ import_react6.default.createElement("span", { style: { fontFamily: F4.mono, fontSize: 10, color: C4.paperFaint, letterSpacing: "0.08em" } }, "VIDEO SUMBER"), inputType === "file" ? /* @__PURE__ */ import_react6.default.createElement("div", { className: "flex items-center gap-3 relative" }, /* @__PURE__ */ import_react6.default.createElement("input", { type: "file", accept: "video/mp4,video/webm", onChange: handleFile, className: "absolute inset-0 opacity-0 cursor-pointer" }), /* @__PURE__ */ import_react6.default.createElement("div", { className: "flex-1 px-3 py-2 rounded flex items-center justify-between", style: { background: C4.panel, border: `1px dashed ${C4.borderSoft}` } }, /* @__PURE__ */ import_react6.default.createElement("span", { style: { fontFamily: F4.mono, fontSize: 11, color: file ? C4.cyan : C4.paperDim, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } }, file ? file.name : "Pilih file video (.mp4)..."), /* @__PURE__ */ import_react6.default.createElement(Upload, { size: 14, color: file ? C4.cyan : C4.paperDim }))) : /* @__PURE__ */ import_react6.default.createElement("input", { type: "text", placeholder: "https://www.youtube.com/watch?v=...", value: youtubeUrl, onChange: (e) => setYoutubeUrl(e.target.value), className: "w-full px-3 py-2 rounded", style: { background: C4.panel, border: `1px solid ${C4.borderSoft}`, color: C4.paper, fontSize: 13 } })), /* @__PURE__ */ import_react6.default.createElement("div", { className: "flex flex-col gap-1.5" }, /* @__PURE__ */ import_react6.default.createElement("span", { style: { fontFamily: F4.mono, fontSize: 10, color: C4.paperFaint, letterSpacing: "0.08em" } }, "TOPIK VIDEO (Opsional)"), /* @__PURE__ */ import_react6.default.createElement("input", { type: "text", placeholder: "Misal: Ekonomi IKN", value: topic, onChange: (e) => setTopic(e.target.value), className: "w-full px-3 py-2 rounded", style: { background: C4.panel, border: `1px solid ${C4.borderSoft}`, color: C4.paper, fontSize: 13 } })), error && /* @__PURE__ */ import_react6.default.createElement(ErrorBanner, { error }), jobId && job && /* @__PURE__ */ import_react6.default.createElement(ProgressBar, { progress: job.progress, message: job.message }), result && /* @__PURE__ */ import_react6.default.createElement("div", { className: "p-3 rounded", style: { background: C4.panelRaised, border: `1px solid ${C4.cyan}` } }, /* @__PURE__ */ import_react6.default.createElement("span", { style: { fontFamily: F4.mono, fontSize: 11, color: C4.cyan, lineHeight: 1.6 } }, "Selesai! ", /* @__PURE__ */ import_react6.default.createElement("strong", null, result.count, " klip"), " diekstrak ke folder:", /* @__PURE__ */ import_react6.default.createElement("br", null), /* @__PURE__ */ import_react6.default.createElement("span", { style: { color: C4.paper } }, result.output_dir)))), /* @__PURE__ */ import_react6.default.createElement("div", { className: "p-5 flex justify-end gap-3", style: { borderTop: `1px solid ${C4.border}`, background: C4.panel } }, /* @__PURE__ */ import_react6.default.createElement("button", { onClick: onClose, style: { background: "transparent", color: C4.paper, border: "none", fontFamily: F4.body, fontWeight: 600, fontSize: 13, cursor: "pointer" } }, isPage ? "\u2190 Kembali ke Studio" : "Tutup"), /* @__PURE__ */ import_react6.default.createElement(PrimaryButton2, { onClick: startExtract, disabled: inputType === "file" && !file || inputType === "youtube" && !youtubeUrl || jobId, loading: !!jobId, icon: Scissors }, "Mulai Ekstrak"))));
   }
+  var SETUP_STEPS = [
+    { id: 1, label: "Template", desc: "Ritme video referensi", icon: Clapperboard, done: (d) => !!d.template },
+    { id: 2, label: "Skrip", desc: "Segmen + narasi", icon: FileText, done: (d) => !!d.script },
+    { id: 3, label: "Narasi", desc: "Upload suara", icon: Mic, done: (d) => !!d.narration },
+    { id: 4, label: "Footage", desc: "Pilih klip tiap segmen", icon: ScanSearch, done: (d) => !!d.footageData }
+  ];
+  function PreviewPane({ footageData, picks }) {
+    const keys = footageData ? Object.keys(footageData) : [];
+    let video = null, thumb = null;
+    for (const k of keys) {
+      const cand = footageData[k]?.candidates?.[picks?.[k] ?? 0];
+      if (cand?.preview_url) {
+        video = cand.preview_url;
+        thumb = cand.thumbnail_url || null;
+        break;
+      }
+    }
+    if (video) {
+      return /* @__PURE__ */ import_react6.default.createElement("video", { src: video, poster: thumb || void 0, controls: true, autoPlay: true, muted: true, loop: true, style: { width: "100%", height: "100%", objectFit: "contain" } });
+    }
+    return /* @__PURE__ */ import_react6.default.createElement("div", { className: "w-full h-full flex flex-col items-center justify-center gap-2.5" }, /* @__PURE__ */ import_react6.default.createElement(Play, { size: 30, color: C4.paperFaint, style: { opacity: 0.45 } }), /* @__PURE__ */ import_react6.default.createElement("span", { style: { fontFamily: F4.mono, fontSize: 10, color: C4.paperFaint } }, "PREVIEW \u2014 isi langkah 1\u20134 di panel kiri"));
+  }
+  function StudioWorkspace({ active, setActive, maxUnlocked, template, setTemplate, script, setScript, narration, setNarration, footageData, setFootageData, picks, setPicks, scriptJobId, goNext, handleReset }) {
+    const ready = !!(narration && footageData);
+    const data = { template, script, narration, footageData };
+    return /* @__PURE__ */ import_react6.default.createElement("div", { className: "flex flex-col w-full", style: { height: "calc(100vh - 58px)" } }, /* @__PURE__ */ import_react6.default.createElement("div", { className: "flex items-center justify-between px-4 sm:px-6 py-2.5 shrink-0", style: { borderBottom: `1px solid ${C4.border}` } }, /* @__PURE__ */ import_react6.default.createElement("div", { className: "flex items-center gap-2" }, /* @__PURE__ */ import_react6.default.createElement(Layers, { size: 14, color: C4.cyan }), /* @__PURE__ */ import_react6.default.createElement("span", { style: { fontFamily: F4.mono, fontSize: 10, color: C4.paperFaint, letterSpacing: "0.1em" } }, "EDITOR WORKSPACE")), /* @__PURE__ */ import_react6.default.createElement("button", { onClick: handleReset, className: "flex items-center gap-1.5 px-3 py-1.5 rounded", style: { background: "transparent", border: "none", color: C4.red, cursor: "pointer", opacity: 0.8 }, onMouseEnter: (e) => e.currentTarget.style.opacity = 1, onMouseLeave: (e) => e.currentTarget.style.opacity = 0.8 }, /* @__PURE__ */ import_react6.default.createElement(Trash2, { size: 12 }), /* @__PURE__ */ import_react6.default.createElement("span", { style: { fontFamily: F4.mono, fontSize: 10 } }, "Reset Project"))), /* @__PURE__ */ import_react6.default.createElement("div", { className: "flex flex-1 overflow-hidden" }, /* @__PURE__ */ import_react6.default.createElement("aside", { className: "w-[330px] shrink-0 overflow-y-auto", style: { borderRight: `1px solid ${C4.border}`, background: C4.panel } }, /* @__PURE__ */ import_react6.default.createElement("div", { className: "px-4 pt-3 pb-2" }, /* @__PURE__ */ import_react6.default.createElement("span", { style: { fontFamily: F4.mono, fontSize: 9, color: C4.paperFaint, letterSpacing: "0.14em" } }, "PROJECT SETUP")), SETUP_STEPS.map((step) => {
+      const locked = step.id > maxUnlocked;
+      const done = step.done(data);
+      const isActive = active === step.id;
+      const Icon2 = step.icon;
+      return /* @__PURE__ */ import_react6.default.createElement("div", { key: step.id, className: "mx-3 mb-2 rounded-xl overflow-hidden", style: { border: `1px solid ${isActive ? C4.amber : C4.borderSoft}`, background: isActive ? "#201C14" : C4.bg } }, /* @__PURE__ */ import_react6.default.createElement("button", { onClick: () => !locked && setActive(step.id), className: "w-full flex items-center gap-3 px-3.5 py-3", style: { cursor: locked ? "not-allowed" : "pointer", opacity: locked ? 0.45 : 1 } }, /* @__PURE__ */ import_react6.default.createElement(Icon2, { size: 16, color: done ? "#7FB88A" : locked ? C4.paperFaint : C4.paperDim }), /* @__PURE__ */ import_react6.default.createElement("div", { className: "flex-1 text-left" }, /* @__PURE__ */ import_react6.default.createElement("div", { style: { fontFamily: F4.body, fontSize: 12.5, fontWeight: 600, color: C4.paper } }, step.id, ". ", step.label), /* @__PURE__ */ import_react6.default.createElement("div", { style: { fontFamily: F4.body, fontSize: 10, color: C4.paperFaint } }, step.desc)), done ? /* @__PURE__ */ import_react6.default.createElement(Check, { size: 15, color: "#7FB88A" }) : locked ? /* @__PURE__ */ import_react6.default.createElement(Lock, { size: 13, color: C4.paperFaint }) : /* @__PURE__ */ import_react6.default.createElement(ChevronRight, { size: 14, color: C4.paperDim })), isActive && /* @__PURE__ */ import_react6.default.createElement("div", { className: "px-3.5 pb-4" }, step.id === 1 && /* @__PURE__ */ import_react6.default.createElement(StageTemplate, { template, setTemplate, onNext: goNext }), step.id === 2 && template && /* @__PURE__ */ import_react6.default.createElement(StageScript, { template, script, setScript, onNext: goNext, onScriptJob: setScriptJobId }), step.id === 3 && script && /* @__PURE__ */ import_react6.default.createElement(StageNarration, { script, narration, setNarration, onNext: goNext }), step.id === 4 && narration && /* @__PURE__ */ import_react6.default.createElement(StageFootage, { narration, footageData, setFootageData, picks, setPicks, onNext: goNext, scriptJobId })));
+    }), /* @__PURE__ */ import_react6.default.createElement("div", { className: "h-4" })), /* @__PURE__ */ import_react6.default.createElement("main", { className: "flex-1 flex flex-col overflow-hidden", style: { background: "#0B0A08" } }, /* @__PURE__ */ import_react6.default.createElement("div", { className: "flex-1 flex items-center justify-center p-5 overflow-y-auto" }, /* @__PURE__ */ import_react6.default.createElement("div", { className: "w-full max-w-3xl rounded-xl overflow-hidden", style: { aspectRatio: "16/9", background: "#000", border: `1px solid ${C4.borderSoft}`, boxShadow: "0 18px 60px rgba(0,0,0,0.55)" } }, /* @__PURE__ */ import_react6.default.createElement(PreviewPane, { footageData, picks }))), /* @__PURE__ */ import_react6.default.createElement("div", { className: "shrink-0 px-4 py-2 flex items-center justify-between", style: { borderTop: `1px solid ${C4.border}` } }, /* @__PURE__ */ import_react6.default.createElement("span", { style: { fontFamily: F4.body, fontSize: 10, color: C4.paperFaint } }, ready ? "Data lengkap \u2014 buka editor penuh untuk atur alur clip bebas (drag \xB7 trim \xB7 split)." : "Preview otomatis muncul begitu footage dipilih."), ready && /* @__PURE__ */ import_react6.default.createElement("button", { onClick: () => {
+      setMaxUnlocked((m) => Math.max(m, 5));
+      setActive(5);
+    }, className: "flex items-center gap-1.5 px-3 py-1.5 rounded", style: { background: C4.amber, color: "#1A1408", border: "none", cursor: "pointer", fontWeight: 600, fontSize: 12 } }, "Buka Editor Penuh ", /* @__PURE__ */ import_react6.default.createElement(ChevronRight, { size: 13 }))))), /* @__PURE__ */ import_react6.default.createElement("div", { className: "shrink-0 overflow-x-auto", style: { borderTop: `1px solid ${C4.border}`, background: C4.panel, minHeight: 168 } }, /* @__PURE__ */ import_react6.default.createElement("div", { className: "flex items-center gap-1.5 px-4 py-2" }, /* @__PURE__ */ import_react6.default.createElement(Scissors, { size: 12, color: C4.paperDim }), /* @__PURE__ */ import_react6.default.createElement("span", { style: { fontFamily: F4.mono, fontSize: 9, color: C4.paperFaint, letterSpacing: "0.12em" } }, "TIMELINE"), /* @__PURE__ */ import_react6.default.createElement("span", { style: { fontFamily: F4.body, fontSize: 10, color: C4.paperFaint, marginLeft: 8 } }, "\u2014 isi langkah 1\u20134 di panel kiri, timeline otomatis terisi & bisa diatur bebas (drag \xB7 trim \xB7 split \xB7 zoom)")), /* @__PURE__ */ import_react6.default.createElement("div", { className: "px-4 pb-3 space-y-1.5" }, [["VIDEO", "0.8"], ["MUSIK", "0.35"], ["CAPTION", "0.5"]].map(([name, pct]) => /* @__PURE__ */ import_react6.default.createElement("div", { key: name, className: "flex items-center gap-2" }, /* @__PURE__ */ import_react6.default.createElement("span", { style: { fontFamily: F4.mono, fontSize: 8.5, color: C4.paperFaint, width: 60, textAlign: "right" } }, name), /* @__PURE__ */ import_react6.default.createElement("div", { className: "flex-1 h-9 rounded flex items-center", style: { background: "#0F0D0A", border: `1px dashed ${C4.borderSoft}`, overflow: "hidden" } }, ready && name === "VIDEO" && /* @__PURE__ */ import_react6.default.createElement("div", { className: "self-stretch rounded-sm m-1", style: { width: pct, background: C4.cyan, opacity: 0.28 } }), ready && name === "CAPTION" && /* @__PURE__ */ import_react6.default.createElement("div", { className: "self-stretch rounded-sm m-1", style: { width: "44%", background: "#7FB88A", opacity: 0.22 } }), ready && name === "MUSIK" && /* @__PURE__ */ import_react6.default.createElement("div", { className: "self-stretch rounded-sm m-1", style: { width: "60%", background: C4.music, opacity: 0.22 } })))))));
+  }
   function StudioPage() {
     const [active, setActive] = useStickyState(1, "ritme_active");
-    const [maxUnlocked, setMaxUnlocked] = useStickyState(1, "ritme_maxUnlocked");
+    const [maxUnlocked, setMaxUnlocked2] = useStickyState(1, "ritme_maxUnlocked");
     const [template, setTemplate] = useStickyState(null, "ritme_template");
     const [script, setScript] = useStickyState(null, "ritme_script");
     const [narration, setNarration] = useStickyState(null, "ritme_narration");
     const [footageData, setFootageData] = useStickyState(null, "ritme_footageData");
     const [picks, setPicks] = useStickyState({}, "ritme_picks");
-    const [scriptJobId, setScriptJobId] = (0, import_react6.useState)(null);
+    const [scriptJobId, setScriptJobId2] = (0, import_react6.useState)(null);
     const handleReset = () => {
       if (window.confirm("Reset seluruh progress dan mulai project baru?")) {
         setActive(1);
-        setMaxUnlocked(1);
+        setMaxUnlocked2(1);
         setTemplate(null);
         setScript(null);
         setNarration(null);
@@ -25762,12 +25757,32 @@ BABAK: ${actLabel}
     const goNext = () => {
       const next = Math.min(active + 1, 5);
       setActive(next);
-      setMaxUnlocked((m) => Math.max(m, next));
+      setMaxUnlocked2((m) => Math.max(m, next));
     };
     return /* @__PURE__ */ import_react6.default.createElement(import_react6.default.Fragment, null, active === 5 && narration && footageData ? (
-      /* ── EDITOR WORKSPACE (CapCut-style, fullscreen) ── */
-      /* @__PURE__ */ import_react6.default.createElement("div", { className: "w-full" }, /* @__PURE__ */ import_react6.default.createElement("div", { className: "flex items-center justify-between px-4 sm:px-6 pt-4 max-w-[1800px] mx-auto" }, /* @__PURE__ */ import_react6.default.createElement("button", { onClick: () => setActive(4), className: "flex items-center gap-1.5 px-3 py-1.5 rounded", style: { background: C4.panel, border: `1px solid ${C4.borderSoft}`, color: C4.paperDim, cursor: "pointer" } }, /* @__PURE__ */ import_react6.default.createElement(ArrowLeft, { size: 14 }), /* @__PURE__ */ import_react6.default.createElement("span", { style: { fontFamily: F4.mono, fontSize: 10 } }, "Kembali ke Footage")), /* @__PURE__ */ import_react6.default.createElement("span", { style: { fontFamily: F4.mono, fontSize: 10, color: C4.paperFaint, letterSpacing: "0.08em" } }, "EDITOR \u2014 ATUR ALUR CLIP BEBAS (drag \xB7 trim \xB7 split \xB7 zoom)")), /* @__PURE__ */ import_react6.default.createElement(TimelineEditor_default, { narration, footageData, picks }))
-    ) : /* @__PURE__ */ import_react6.default.createElement(import_react6.default.Fragment, null, /* @__PURE__ */ import_react6.default.createElement("div", { className: "px-4 sm:px-6 pt-5 max-w-3xl mx-auto flex items-center justify-between" }, /* @__PURE__ */ import_react6.default.createElement("span", { style: { fontFamily: F4.mono, fontSize: 10, color: C4.paperFaint, letterSpacing: "0.08em" } }, "PIPELINE STUDIO \u2014 5 TAHAP"), /* @__PURE__ */ import_react6.default.createElement("button", { onClick: handleReset, className: "flex items-center gap-1.5 px-3 py-1.5 rounded", style: { background: "transparent", border: "none", color: C4.red, cursor: "pointer", opacity: 0.8 }, onMouseEnter: (e) => e.currentTarget.style.opacity = 1, onMouseLeave: (e) => e.currentTarget.style.opacity = 0.8 }, /* @__PURE__ */ import_react6.default.createElement(Trash2, { size: 12 }), /* @__PURE__ */ import_react6.default.createElement("span", { style: { fontFamily: F4.mono, fontSize: 10 } }, "Reset Project"))), /* @__PURE__ */ import_react6.default.createElement(StageNav, { active, setActive, maxUnlocked }), /* @__PURE__ */ import_react6.default.createElement("div", { className: "px-4 sm:px-6 py-6 max-w-3xl mx-auto" }, active === 1 && /* @__PURE__ */ import_react6.default.createElement(StageTemplate, { template, setTemplate, onNext: goNext }), active === 2 && template && /* @__PURE__ */ import_react6.default.createElement(StageScript, { template, script, setScript, onNext: goNext, onScriptJob: setScriptJobId }), active === 3 && script && /* @__PURE__ */ import_react6.default.createElement(StageNarration, { script, narration, setNarration, onNext: goNext }), active === 4 && narration && /* @__PURE__ */ import_react6.default.createElement(StageFootage, { narration, footageData, setFootageData, picks, setPicks, onNext: goNext, scriptJobId }))));
+      /* ── EDITOR PENUH (CapCut-style, fullscreen) ── */
+      /* @__PURE__ */ import_react6.default.createElement("div", { className: "w-full" }, /* @__PURE__ */ import_react6.default.createElement("div", { className: "flex items-center justify-between px-4 sm:px-6 pt-4 max-w-[1800px] mx-auto" }, /* @__PURE__ */ import_react6.default.createElement("button", { onClick: () => setActive(4), className: "flex items-center gap-1.5 px-3 py-1.5 rounded", style: { background: C4.panel, border: `1px solid ${C4.borderSoft}`, color: C4.paperDim, cursor: "pointer" } }, /* @__PURE__ */ import_react6.default.createElement(ArrowLeft, { size: 14 }), /* @__PURE__ */ import_react6.default.createElement("span", { style: { fontFamily: F4.mono, fontSize: 10 } }, "Kembali ke Workspace")), /* @__PURE__ */ import_react6.default.createElement("span", { style: { fontFamily: F4.mono, fontSize: 10, color: C4.paperFaint, letterSpacing: "0.08em" } }, "EDITOR \u2014 ATUR ALUR CLIP BEBAS (drag \xB7 trim \xB7 split \xB7 zoom)")), /* @__PURE__ */ import_react6.default.createElement(TimelineEditor_default, { narration, footageData, picks }))
+    ) : /* @__PURE__ */ import_react6.default.createElement(
+      StudioWorkspace,
+      {
+        active,
+        setActive,
+        maxUnlocked,
+        template,
+        setTemplate,
+        script,
+        setScript,
+        narration,
+        setNarration,
+        footageData,
+        setFootageData,
+        picks,
+        setPicks,
+        scriptJobId,
+        goNext,
+        handleReset
+      }
+    ));
   }
   function HeaderBar({ route }) {
     return /* @__PURE__ */ import_react6.default.createElement("div", { className: "flex items-center justify-between px-4 sm:px-6 py-3.5", style: { borderBottom: `1px solid ${C4.border}`, position: "sticky", top: 0, zIndex: 40, background: C4.bg } }, /* @__PURE__ */ import_react6.default.createElement("div", { className: "flex items-baseline gap-2.5" }, /* @__PURE__ */ import_react6.default.createElement("a", { href: "#/studio", style: { textDecoration: "none", display: "flex", alignItems: "baseline", gap: 10 } }, /* @__PURE__ */ import_react6.default.createElement("span", { style: { fontFamily: F4.display, fontSize: 19, fontWeight: 800, color: C4.paper, letterSpacing: "0.02em" } }, "RITME"), /* @__PURE__ */ import_react6.default.createElement("span", { style: { fontFamily: F4.mono, fontSize: 10, color: C4.paperFaint, letterSpacing: "0.08em" } }, "AUTO-EDIT PIPELINE"))), /* @__PURE__ */ import_react6.default.createElement("nav", { className: "flex items-center gap-1.5" }, NAV_ITEMS.map((item) => {

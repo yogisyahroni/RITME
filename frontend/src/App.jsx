@@ -1506,6 +1506,132 @@ function FootageExtractorTool({ onClose, variant = "modal" }) {
    (useStickyState → localStorage), jadi pindah-pindah halaman
    gak ngereset progress.
    ============================================================ */
+/* ============================================================
+   WORKSPACE SHELL — CapCut-style: panel setup kiri, preview
+   tengah, timeline bawah. Dipakai dari detik pertama buka app;
+   begitu narasi+footage siap → TimelineEditor penuh (active 5).
+   ============================================================ */
+const SETUP_STEPS = [
+  { id: 1, label: "Template", desc: "Ritme video referensi", icon: Clapperboard, done: (d) => !!d.template },
+  { id: 2, label: "Skrip", desc: "Segmen + narasi", icon: FileText, done: (d) => !!d.script },
+  { id: 3, label: "Narasi", desc: "Upload suara", icon: Mic, done: (d) => !!d.narration },
+  { id: 4, label: "Footage", desc: "Pilih klip tiap segmen", icon: ScanSearch, done: (d) => !!d.footageData },
+];
+
+function PreviewPane({ footageData, picks }) {
+  const keys = footageData ? Object.keys(footageData) : [];
+  let video = null, thumb = null;
+  for (const k of keys) {
+    const cand = footageData[k]?.candidates?.[picks?.[k] ?? 0];
+    if (cand?.preview_url) { video = cand.preview_url; thumb = cand.thumbnail_url || null; break; }
+  }
+  if (video) {
+    return <video src={video} poster={thumb || undefined} controls autoPlay muted loop style={{ width: "100%", height: "100%", objectFit: "contain" }} />;
+  }
+  return (
+    <div className="w-full h-full flex flex-col items-center justify-center gap-2.5">
+      <Play size={30} color={C.paperFaint} style={{ opacity: 0.45 }} />
+      <span style={{ fontFamily: F.mono, fontSize: 10, color: C.paperFaint }}>PREVIEW — isi langkah 1–4 di panel kiri</span>
+    </div>
+  );
+}
+
+function StudioWorkspace({ active, setActive, maxUnlocked, template, setTemplate, script, setScript, narration, setNarration, footageData, setFootageData, picks, setPicks, scriptJobId, goNext, handleReset }) {
+  const ready = !!(narration && footageData);
+  const data = { template, script, narration, footageData };
+  return (
+    <div className="flex flex-col w-full" style={{ height: "calc(100vh - 58px)" }}>
+      {/* top bar */}
+      <div className="flex items-center justify-between px-4 sm:px-6 py-2.5 shrink-0" style={{ borderBottom: `1px solid ${C.border}` }}>
+        <div className="flex items-center gap-2">
+          <Layers size={14} color={C.cyan} />
+          <span style={{ fontFamily: F.mono, fontSize: 10, color: C.paperFaint, letterSpacing: "0.1em" }}>EDITOR WORKSPACE</span>
+        </div>
+        <button onClick={handleReset} className="flex items-center gap-1.5 px-3 py-1.5 rounded" style={{ background: "transparent", border: "none", color: C.red, cursor: "pointer", opacity: 0.8 }} onMouseEnter={e => e.currentTarget.style.opacity = 1} onMouseLeave={e => e.currentTarget.style.opacity = 0.8}>
+          <Trash2 size={12} />
+          <span style={{ fontFamily: F.mono, fontSize: 10 }}>Reset Project</span>
+        </button>
+      </div>
+
+      <div className="flex flex-1 overflow-hidden">
+        {/* LEFT — project setup steps */}
+        <aside className="w-[330px] shrink-0 overflow-y-auto" style={{ borderRight: `1px solid ${C.border}`, background: C.panel }}>
+          <div className="px-4 pt-3 pb-2">
+            <span style={{ fontFamily: F.mono, fontSize: 9, color: C.paperFaint, letterSpacing: "0.14em" }}>PROJECT SETUP</span>
+          </div>
+          {SETUP_STEPS.map((step) => {
+            const locked = step.id > maxUnlocked;
+            const done = step.done(data);
+            const isActive = active === step.id;
+            const Icon = step.icon;
+            return (
+              <div key={step.id} className="mx-3 mb-2 rounded-xl overflow-hidden" style={{ border: `1px solid ${isActive ? C.amber : C.borderSoft}`, background: isActive ? "#201C14" : C.bg }}>
+                <button onClick={() => !locked && setActive(step.id)} className="w-full flex items-center gap-3 px-3.5 py-3" style={{ cursor: locked ? "not-allowed" : "pointer", opacity: locked ? 0.45 : 1 }}>
+                  <Icon size={16} color={done ? "#7FB88A" : locked ? C.paperFaint : C.paperDim} />
+                  <div className="flex-1 text-left">
+                    <div style={{ fontFamily: F.body, fontSize: 12.5, fontWeight: 600, color: C.paper }}>{step.id}. {step.label}</div>
+                    <div style={{ fontFamily: F.body, fontSize: 10, color: C.paperFaint }}>{step.desc}</div>
+                  </div>
+                  {done ? <Check size={15} color="#7FB88A" /> : locked ? <Lock size={13} color={C.paperFaint} /> : <ChevronRight size={14} color={C.paperDim} />}
+                </button>
+                {isActive && (
+                  <div className="px-3.5 pb-4">
+                    {step.id === 1 && <StageTemplate template={template} setTemplate={setTemplate} onNext={goNext} />}
+                    {step.id === 2 && template && <StageScript template={template} script={script} setScript={setScript} onNext={goNext} onScriptJob={setScriptJobId} />}
+                    {step.id === 3 && script && <StageNarration script={script} narration={narration} setNarration={setNarration} onNext={goNext} />}
+                    {step.id === 4 && narration && <StageFootage narration={narration} footageData={footageData} setFootageData={setFootageData} picks={picks} setPicks={setPicks} onNext={goNext} scriptJobId={scriptJobId} />}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+          <div className="h-4" />
+        </aside>
+
+        {/* CENTER — preview */}
+        <main className="flex-1 flex flex-col overflow-hidden" style={{ background: "#0B0A08" }}>
+          <div className="flex-1 flex items-center justify-center p-5 overflow-y-auto">
+            <div className="w-full max-w-3xl rounded-xl overflow-hidden" style={{ aspectRatio: "16/9", background: "#000", border: `1px solid ${C.borderSoft}`, boxShadow: "0 18px 60px rgba(0,0,0,0.55)" }}>
+              <PreviewPane footageData={footageData} picks={picks} />
+            </div>
+          </div>
+          <div className="shrink-0 px-4 py-2 flex items-center justify-between" style={{ borderTop: `1px solid ${C.border}` }}>
+            <span style={{ fontFamily: F.body, fontSize: 10, color: C.paperFaint }}>
+              {ready ? "Data lengkap — buka editor penuh untuk atur alur clip bebas (drag · trim · split)." : "Preview otomatis muncul begitu footage dipilih."}
+            </span>
+            {ready && (
+              <button onClick={() => { setMaxUnlocked((m) => Math.max(m, 5)); setActive(5); }} className="flex items-center gap-1.5 px-3 py-1.5 rounded" style={{ background: C.amber, color: "#1A1408", border: "none", cursor: "pointer", fontWeight: 600, fontSize: 12 }}>
+                Buka Editor Penuh <ChevronRight size={13} />
+              </button>
+            )}
+          </div>
+        </main>
+      </div>
+
+      {/* BOTTOM — timeline (placeholder tracks) */}
+      <div className="shrink-0 overflow-x-auto" style={{ borderTop: `1px solid ${C.border}`, background: C.panel, minHeight: 168 }}>
+        <div className="flex items-center gap-1.5 px-4 py-2">
+          <Scissors size={12} color={C.paperDim} />
+          <span style={{ fontFamily: F.mono, fontSize: 9, color: C.paperFaint, letterSpacing: "0.12em" }}>TIMELINE</span>
+          <span style={{ fontFamily: F.body, fontSize: 10, color: C.paperFaint, marginLeft: 8 }}>— isi langkah 1–4 di panel kiri, timeline otomatis terisi & bisa diatur bebas (drag · trim · split · zoom)</span>
+        </div>
+        <div className="px-4 pb-3 space-y-1.5">
+          {[["VIDEO", "0.8"], ["MUSIK", "0.35"], ["CAPTION", "0.5"]].map(([name, pct]) => (
+            <div key={name} className="flex items-center gap-2">
+              <span style={{ fontFamily: F.mono, fontSize: 8.5, color: C.paperFaint, width: 60, textAlign: "right" }}>{name}</span>
+              <div className="flex-1 h-9 rounded flex items-center" style={{ background: "#0F0D0A", border: `1px dashed ${C.borderSoft}`, overflow: "hidden" }}>
+                {ready && name === "VIDEO" && <div className="self-stretch rounded-sm m-1" style={{ width: pct, background: C.cyan, opacity: 0.28 }} />}
+                {ready && name === "CAPTION" && <div className="self-stretch rounded-sm m-1" style={{ width: "44%", background: "#7FB88A", opacity: 0.22 }} />}
+                {ready && name === "MUSIK" && <div className="self-stretch rounded-sm m-1" style={{ width: "60%", background: C.music, opacity: 0.22 }} />}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function StudioPage() {
   const [active, setActive] = useStickyState(1, "ritme_active");
   const [maxUnlocked, setMaxUnlocked] = useStickyState(1, "ritme_maxUnlocked");
@@ -1540,12 +1666,12 @@ function StudioPage() {
   return (
     <>
       {active === 5 && narration && footageData ? (
-        /* ── EDITOR WORKSPACE (CapCut-style, fullscreen) ── */
+        /* ── EDITOR PENUH (CapCut-style, fullscreen) ── */
         <div className="w-full">
           <div className="flex items-center justify-between px-4 sm:px-6 pt-4 max-w-[1800px] mx-auto">
             <button onClick={() => setActive(4)} className="flex items-center gap-1.5 px-3 py-1.5 rounded" style={{ background: C.panel, border: `1px solid ${C.borderSoft}`, color: C.paperDim, cursor: "pointer" }}>
               <ArrowLeft size={14} />
-              <span style={{ fontFamily: F.mono, fontSize: 10 }}>Kembali ke Footage</span>
+              <span style={{ fontFamily: F.mono, fontSize: 10 }}>Kembali ke Workspace</span>
             </button>
             <span style={{ fontFamily: F.mono, fontSize: 10, color: C.paperFaint, letterSpacing: "0.08em" }}>
               EDITOR — ATUR ALUR CLIP BEBAS (drag · trim · split · zoom)
@@ -1554,26 +1680,16 @@ function StudioPage() {
           <TimelineEditor narration={narration} footageData={footageData} picks={picks} />
         </div>
       ) : (
-        <>
-          <div className="px-4 sm:px-6 pt-5 max-w-3xl mx-auto flex items-center justify-between">
-            <span style={{ fontFamily: F.mono, fontSize: 10, color: C.paperFaint, letterSpacing: "0.08em" }}>
-              PIPELINE STUDIO — 5 TAHAP
-            </span>
-            <button onClick={handleReset} className="flex items-center gap-1.5 px-3 py-1.5 rounded" style={{ background: "transparent", border: "none", color: C.red, cursor: "pointer", opacity: 0.8 }} onMouseEnter={e => e.currentTarget.style.opacity = 1} onMouseLeave={e => e.currentTarget.style.opacity = 0.8}>
-              <Trash2 size={12} />
-              <span style={{ fontFamily: F.mono, fontSize: 10 }}>Reset Project</span>
-            </button>
-          </div>
-
-          <StageNav active={active} setActive={setActive} maxUnlocked={maxUnlocked} />
-
-          <div className="px-4 sm:px-6 py-6 max-w-3xl mx-auto">
-            {active === 1 && <StageTemplate template={template} setTemplate={setTemplate} onNext={goNext} />}
-            {active === 2 && template && <StageScript template={template} script={script} setScript={setScript} onNext={goNext} onScriptJob={setScriptJobId} />}
-            {active === 3 && script && <StageNarration script={script} narration={narration} setNarration={setNarration} onNext={goNext} />}
-            {active === 4 && narration && <StageFootage narration={narration} footageData={footageData} setFootageData={setFootageData} picks={picks} setPicks={setPicks} onNext={goNext} scriptJobId={scriptJobId} />}
-          </div>
-        </>
+        <StudioWorkspace
+          active={active} setActive={setActive} maxUnlocked={maxUnlocked}
+          template={template} setTemplate={setTemplate}
+          script={script} setScript={setScript}
+          narration={narration} setNarration={setNarration}
+          footageData={footageData} setFootageData={setFootageData}
+          picks={picks} setPicks={setPicks}
+          scriptJobId={scriptJobId}
+          goNext={goNext} handleReset={handleReset}
+        />
       )}
     </>
   );
