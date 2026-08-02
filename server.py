@@ -1372,6 +1372,14 @@ app.mount("/outputs/footage", StaticFiles(directory=str(CACHE_DIR / "footage")),
 FRONTEND_DIR = Path(__file__).parent / "frontend" / "dist"
 if FRONTEND_DIR.exists():
     app.mount("/", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")
+
+    @app.middleware("http")
+    async def no_cache_bundle(request, call_next):
+        """Bundle/HTML gak di-cache browser — mencegah UI basi setelah rebuild."""
+        resp = await call_next(request)
+        if request.url.path in ("/", "/index.html", "/bundle.js", "/tailwind.css"):
+            resp.headers["Cache-Control"] = "no-store"
+        return resp
 else:
     @app.get("/")
     def frontend_missing():

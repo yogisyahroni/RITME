@@ -72,11 +72,11 @@ export default function ClipperTool({ onClose, variant = "modal" }) {
   const [error, setError] = useState(null);
   const fileRef = useRef(null);
 
-  // Preview caption: fetch word timestamps saat previewClip berubah (kalau autoCaption ON)
+  // Preview caption: fetch word timestamps saat previewClip berubah (selalu, biar preview nunjukin caption kayak hasil render)
   useEffect(() => {
     setActiveWord(-1);
     const c = clips[previewClip];
-    if (previewClip === null || !c || !autoCaption) {
+    if (previewClip === null || !c) {
       setPreviewWords(null);
       setCapsLoading(false);
       return;
@@ -263,7 +263,12 @@ export default function ClipperTool({ onClose, variant = "modal" }) {
                     <span style={{ fontFamily: F.mono, fontSize: 11, color: C.tally, letterSpacing: "0.06em" }}>
                       ▶ PREVIEW CLIP {previewClip + 1} — {clips[previewClip].duration.toFixed(1)}s ({fmt(clips[previewClip].start)} – {fmt(clips[previewClip].end)}) · {ASPECTS.find(a => a.id === aspect)?.res || aspect}
                     </span>
-                    <button onClick={() => setPreviewClip(null)} style={{ fontFamily: F.mono, fontSize: 11, color: C.paperDim, background: "none", border: "none", cursor: "pointer" }}>✕ Tutup</button>
+                    <span className="flex items-center gap-2">
+                      <span style={{ fontFamily: F.mono, fontSize: 9.5, color: autoCaption ? C.caption : C.paperFaint, background: autoCaption ? "rgba(127,184,138,0.15)" : "rgba(255,255,255,0.05)", border: `1px solid ${autoCaption ? C.caption : C.border}`, borderRadius: 10, padding: "2px 8px" }}>
+                        CAPTION {autoCaption ? "AKTIF" : "PREVIEW"}
+                      </span>
+                      <button onClick={() => setPreviewClip(null)} style={{ fontFamily: F.mono, fontSize: 11, color: C.paperDim, background: "none", border: "none", cursor: "pointer" }}>✕ Tutup</button>
+                    </span>
                   </div>
                   {videoUrl && (
                     <div className="flex items-center justify-center" style={{
@@ -291,9 +296,8 @@ export default function ClipperTool({ onClose, variant = "modal" }) {
                             if (idx !== activeWord) setActiveWord(idx);
                           }}
                         />
-                        {/* Live caption overlay (saat AutoCaption ON) */}
-                        {autoCaption && (
-                          <div style={{ position: "absolute", left: 0, right: 0, bottom: 48, padding: "0 10px", textAlign: "center", pointerEvents: "none" }}>
+                        {/* Live caption overlay (selalu tampil di preview; toggle AutoCaption cuma kontrol burn di render) */}
+                        <div style={{ position: "absolute", left: 0, right: 0, bottom: 48, padding: "0 10px", textAlign: "center", pointerEvents: "none" }}>
                             {capsLoading && (
                               <div className="flex items-center justify-center gap-2" style={{ fontFamily: F.body, fontSize: 12, color: C.paperDim, background: "rgba(0,0,0,0.55)", borderRadius: 20, padding: "6px 14px", display: "inline-flex" }}>
                                 <Loader2 size={13} className="animate-spin" /> Transkripsi clip…
@@ -318,8 +322,7 @@ export default function ClipperTool({ onClose, variant = "modal" }) {
                                 })}
                               </div>
                             )}
-                          </div>
-                        )}
+                        </div>
                       </div>
                     </div>
                   )}
