@@ -312,17 +312,19 @@ export default function ClipperTool({ onClose, variant = "modal" }) {
                               <div style={{
                                 display: "flex", flexWrap: "wrap", justifyContent: "center", alignItems: "center",
                                 gap: "2px 6px",
-                                fontFamily: F.body, fontWeight: 800, fontSize: 16, lineHeight: 1.45,
-                                background: "rgba(0,0,0,0.62)", borderRadius: 12, padding: "8px 14px",
+                                fontFamily: F.body, fontWeight: 800, fontSize: 20, lineHeight: 1.4,
+                                background: "rgba(0,0,0,0.62)", borderRadius: 12, padding: "8px 16px",
                                 maxWidth: "100%", textAlign: "center",
                               }}>
                                 {previewWords.map((w, i) => {
-                                  // window: 8 kata sebelum & sesudah kata aktif (TikTok-style sentence)
-                                  const vis = activeWord < 0 || (i >= activeWord - 8 && i <= activeWord + 8);
+                                  // TikTok style: max 5 kata (2 sebelum + aktif + 2 sesudah)
+                                  const vis = activeWord < 0
+                                    ? i < 3
+                                    : (i >= activeWord - 2 && i <= activeWord + 2);
                                   if (!vis) return null;
                                   return (
                                     <span key={i} style={{
-                                      color: i === activeWord ? "#ffd400" : i < activeWord ? "#ffffff" : "rgba(255,255,255,0.6)",
+                                      color: i === activeWord ? "#ffd400" : i < activeWord ? "#ffffff" : "rgba(255,255,255,0.75)",
                                       whiteSpace: "nowrap",
                                     }}>{w.word}</span>
                                   );
