@@ -1263,6 +1263,7 @@ def clipper_analyze(req: ClipperAnalyzeRequest):
         "clips": clips,
         "total_duration": cli.probe_duration(req.video_path),
         "video_url": f"/uploads/{Path(req.video_path).name}",
+        "safe_area": cli.detect_black_bars(req.video_path),
     }
 
 

@@ -12,6 +12,7 @@ Sumber video bisa file lokal ATAU hasil download YouTube (lihat server.py).
 """
 from __future__ import annotations
 
+import os
 import subprocess
 from pathlib import Path
 
@@ -184,6 +185,66 @@ def extract_frame(video_path: str, at_second: float, out_image: str) -> str:
     if r.returncode != 0:
         raise RuntimeError(f"ffmpeg frame gagal: {r.stderr[-300:]}")
     return out_image
+
+
+def detect_black_bars(video_path: str, num_frames: int = 3) -> dict:
+    """Deteksi black bars (letterbox) atas/bawah video.
+
+    Kapasitas: scan beberapa frame (10/50/90% durasi), tiap frame cari baris
+    yang >92% pikselnya gelap (<32) dari tepi atas & bawah. Return fraksi
+    tinggi video (0..1). Dipakai buat safe area caption: caption cuma boleh
+    di area KONTEN (putih), gak boleh kena black bar (hitam).
+    """
+    from PIL import Image
+    import tempfile
+    dur = probe_duration(video_path)
+    if dur <= 0:
+        return {"top": 0.0, "bottom": 0.0}
+    tops, bots = [], []
+    for f in range(num_frames):
+        t = dur * (0.1 + 0.4 * f / max(1, num_frames - 1))
+        tmp = tempfile.mktemp(suffix=".jpg")
+        try:
+            cmd = [
+                "ffmpeg", "-y", "-loglevel", "error",
+                "-ss", f"{t:.2f}", "-i", video_path,
+                "-frames:v", "1", "-vf", "scale=160:-2", "-q:v", "4", tmp,
+            ]
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=40)
+            if r.returncode != 0 or not os.path.exists(tmp):
+                continue
+            img = Image.open(tmp).convert("L")
+            w, h = img.size
+            px = list(img.getdata())
+            rows = [px[i * w:(i + 1) * w] for i in range(h)]
+            threshold = 32
+            top = 0
+            for row in rows:
+                if sum(1 for v in row if v < threshold) / w >= 0.92:
+                    top += 1
+                else:
+                    break
+            bot = 0
+            for row in reversed(rows):
+                if sum(1 for v in row if v < threshold) / w >= 0.92:
+                    bot += 1
+                else:
+                    break
+            tops.append(top / h)
+            bots.append(bot / h)
+        finally:
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
+    top_frac = sum(tops) / len(tops) if tops else 0.0
+    bot_frac = sum(bots) / len(bots) if bots else 0.0
+    # abaikan bar tipis (<3%) — itu noise, bukan letterbox
+    if top_frac < 0.03:
+        top_frac = 0.0
+    if bot_frac < 0.03:
+        bot_frac = 0.0
+    return {"top": round(top_frac, 4), "bottom": round(bot_frac, 4)}
 
 
 # ---------------------------------------------------------------------------

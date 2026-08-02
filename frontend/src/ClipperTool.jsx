@@ -113,6 +113,8 @@ export default function ClipperTool({ onClose, variant = "modal" }) {
   const [clips, setClips] = useState([]);
   const [totalDur, setTotalDur] = useState(0);
   const [videoUrl, setVideoUrl] = useState("");
+  const [safeArea, setSafeArea] = useState({ top: 0, bottom: 0 });
+  const [vidBarBottom, setVidBarBottom] = useState(0);   // fraksi black bar bawah dari video element (contain)
   const [previewClip, setPreviewClip] = useState(null);   // index clip yang di-preview
   const [analyzing, setAnalyzing] = useState(false);
   const [selected, setSelected] = useState({});         // index -> true
@@ -199,6 +201,7 @@ export default function ClipperTool({ onClose, variant = "modal" }) {
       setClips(data.clips || []);
       setTotalDur(data.total_duration || 0);
       setVideoUrl(data.video_url || "");
+      setSafeArea(data.safe_area || { top: 0, bottom: 0 });
       setSelected(Object.fromEntries((data.clips || []).map(c => [c.index, true])));
     } catch (e) {
       setError(String(e));
@@ -342,6 +345,19 @@ export default function ClipperTool({ onClose, variant = "modal" }) {
                           style={{ width: "100%", height: "100%", objectFit: "cover", background: "#000", display: "block" }}
                           onLoadedMetadata={(e) => {
                             try { e.currentTarget.currentTime = clips[previewClip].start + 0.05; e.currentTarget.play().catch(() => {}); } catch (_) {}
+                            // hitung black bars (kalau video di-fit contain): caption gak boleh kena bars
+                            try {
+                              const v = e.currentTarget;
+                              const c = v.parentElement;
+                              const vw = v.videoWidth, vh = v.videoHeight;
+                              const cw = c.clientWidth, ch = c.clientHeight;
+                              if (vw && vh && cw && ch) {
+                                const scale = Math.max(cw / vw, ch / vh);
+                                const dispH = vh * scale;
+                                const barBottom = Math.max(0, (ch - dispH) / 2) / ch;
+                                setVidBarBottom(barBottom);
+                              }
+                            } catch (_) {}
                           }}
                           onTimeUpdate={(e) => {
                             if (!previewWords || !previewWords.length) return;
@@ -354,7 +370,8 @@ export default function ClipperTool({ onClose, variant = "modal" }) {
                           }}
                         />
                         {/* Live caption overlay (selalu tampil di preview; toggle AutoCaption cuma kontrol burn di render) */}
-                        <div style={{ position: "absolute", left: 0, right: 0, bottom: "14%", padding: "0 10px", textAlign: "center", pointerEvents: "none" }}>
+                        {/* Posisi: di atas area HITAM apa pun (UI TikTok ~20%, black bar video, atau safe area backend) + 2% buffer */}
+                        <div style={{ position: "absolute", left: 0, right: 0, bottom: `${Math.max(vidBarBottom * 100, safeArea.bottom * 100, 20) + 2}%`, padding: "0 10px", textAlign: "center", pointerEvents: "none" }}>
                             {capsLoading && (
                               <div className="flex items-center justify-center gap-2" style={{ fontFamily: F.body, fontSize: 12, color: C.paperDim, background: "rgba(0,0,0,0.55)", borderRadius: 20, padding: "6px 14px", display: "inline-flex" }}>
                                 <Loader2 size={13} className="animate-spin" /> Transkripsi clip…

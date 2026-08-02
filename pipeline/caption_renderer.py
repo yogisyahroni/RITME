@@ -33,7 +33,7 @@ CAPTION_PRESETS = {
         "stroke_color": "black",
         "stroke_width": 2,
         "position": "bottom",
-        "margin": 0.06,                  # fraction of frame height from edge
+        "margin": 0.20,                  # safe area TikTok/Reels (~380px di 1080x1920) — di atas UI
         "max_width_ratio": 0.9,          # fraction of frame width
         "background": None,
     },
