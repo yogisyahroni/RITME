@@ -262,7 +262,7 @@ export default function ClipperTool({ onClose, variant = "modal" }) {
                     <button key={c.index} onClick={() => toggleClip(c.index)}
                       className="relative rounded overflow-hidden text-left"
                       style={{ border: `2px solid ${on ? C.tally : C.borderSoft}`, background: C.panelRaised, cursor: "pointer", padding: 0 }}>
-                      <div style={{ position: "relative", height: 120, background: "#000" }}>
+                      <div style={{ position: "relative", aspectRatio: "9 / 16", background: "#000", overflow: "hidden" }}>
                         {c.thumbnail_url
                           ? <img src={c.thumbnail_url} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                           : <Film size={20} color={C.paperFaint} style={{ margin: "50px auto", display: "block" }} />}
