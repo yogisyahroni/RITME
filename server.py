@@ -21,9 +21,11 @@ Design notes:
 import os
 import re
 import shutil
+import subprocess
 import sys
 import uuid
 import threading
+from datetime import datetime
 import torch
 from pathlib import Path
 import faulthandler
@@ -1363,8 +1365,154 @@ def thumbnail_generate(req: ThumbnailRequest):
     return {"url": f"/outputs/render/thumbnails/{out.name}", "path": str(out)}
 
 
+# ============================================================
+# Project Library — P0.1 (CapCut Pro roadmap)
+# File-based storage: projects/<id>/project.json + thumb.jpg
+# ============================================================
+PROJECTS_DIR = Path(__file__).parent / "projects"
+PROJECTS_DIR.mkdir(parents=True, exist_ok=True)
+
+
+class ProjectSaveRequest(BaseModel):
+    name: str
+    segments: list[TimelineSegment]
+    finishing: dict = {}
+    narration_meta: dict = {}
+    template_name: str = ""
+
+
+def _project_meta(pid: str, name: str, segments: list[TimelineSegment],
+                  finishing: dict, narration_meta: dict, template_name: str) -> dict:
+    """Metadata kartu project — dipakai buat grid list (P3.2 analytics included)."""
+    dur = sum(max(float(s.duration or 0), 0) for s in segments)
+    words = sum(len((s.narration_text or "").split()) for s in segments)
+    wpm = round(words / (dur / 60), 1) if dur > 0 else 0
+    return {
+        "id": pid,
+        "name": name,
+        "segments_count": len(segments),
+        "scene_count": len([s for s in segments if s.video_path]),
+        "duration": round(dur, 2),
+        "wpm": wpm,
+        "template_name": template_name or (narration_meta or {}).get("template_name", ""),
+        "thumb_url": f"/projects/{pid}/thumb.jpg",
+    }
+
+
+def _project_thumbnail(segments: list[TimelineSegment], out_path: str) -> bool:
+    """Frame tengah footage pertama yang valid -> jpg kecil buat grid."""
+    vid = next((s.video_path for s in segments
+                if s.video_path and os.path.exists(s.video_path)), None)
+    if not vid:
+        return False
+    try:
+        from pipeline.clipper import probe_duration
+        total = probe_duration(vid)
+        if total <= 0:
+            total = 10.0
+        at = min(max(total / 2, 0.1), max(total - 0.3, 0.1))
+        Path(out_path).parent.mkdir(parents=True, exist_ok=True)
+        subprocess.run([
+            "ffmpeg", "-y", "-loglevel", "error",
+            "-ss", f"{at:.3f}", "-i", vid,
+            "-frames:v", "1", "-vf", "scale=480:-2", "-q:v", "3", out_path,
+        ], capture_output=True, text=True, timeout=120)
+        return Path(out_path).exists() and Path(out_path).stat().st_size > 0
+    except Exception:
+        return False
+
+
+@app.post("/api/projects")
+def project_save(req: ProjectSaveRequest):
+    """Simpan project baru (id unik). Thumbnail dari footage segmen pertama."""
+    if not req.name.strip():
+        raise HTTPException(400, "Nama project wajib diisi")
+    if not req.segments:
+        raise HTTPException(400, "Project kosong — tidak ada segmen")
+    safe = _safe_output_name(req.name) or "project"
+    pid = uuid.uuid4().hex[:12]
+    folder = PROJECTS_DIR / pid
+    folder.mkdir(parents=True, exist_ok=True)
+    meta = _project_meta(pid, safe, req.segments, req.finishing, req.narration_meta, req.template_name)
+    data = {
+        **meta,
+        "segments": [s.model_dump() for s in req.segments],
+        "finishing": req.finishing,
+        "narration_meta": req.narration_meta,
+        "saved_at": datetime.now().isoformat(timespec="seconds"),
+    }
+    (folder / "project.json").write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    has_thumb = _project_thumbnail(req.segments, str(folder / "thumb.jpg"))
+    if not has_thumb:
+        meta["thumb_url"] = None
+    return meta
+
+
+@app.get("/api/projects")
+def project_list():
+    """List semua project (metadata saja, urut terbaru)."""
+    items = []
+    for d in sorted(PROJECTS_DIR.iterdir(), key=lambda p: p.stat().st_mtime, reverse=True):
+        pf = d / "project.json"
+        if not d.is_dir() or not pf.exists():
+            continue
+        try:
+            data = json.loads(pf.read_text(encoding="utf-8"))
+            items.append({k: data.get(k) for k in (
+                "id", "name", "segments_count", "scene_count", "duration",
+                "wpm", "template_name", "thumb_url", "saved_at")})
+        except Exception:
+            continue
+    return {"projects": items}
+
+
+@app.get("/api/projects/{pid}")
+def project_get(pid: str):
+    pf = PROJECTS_DIR / pid / "project.json"
+    if not pf.exists():
+        raise HTTPException(404, "Project tidak ditemukan")
+    try:
+        return json.loads(pf.read_text(encoding="utf-8"))
+    except Exception:
+        raise HTTPException(500, "File project corrupt")
+
+
+@app.put("/api/projects/{pid}")
+def project_update(pid: str, req: ProjectSaveRequest):
+    """Update project existing — id & created_at dipertahankan."""
+    pf = PROJECTS_DIR / pid / "project.json"
+    if not pf.exists():
+        raise HTTPException(404, "Project tidak ditemukan")
+    safe = _safe_output_name(req.name) or "project"
+    old = json.loads(pf.read_text(encoding="utf-8"))
+    meta = _project_meta(pid, safe, req.segments, req.finishing, req.narration_meta, req.template_name)
+    data = {
+        **meta,
+        "segments": [s.model_dump() for s in req.segments],
+        "finishing": req.finishing,
+        "narration_meta": req.narration_meta,
+        "created_at": old.get("created_at") or old.get("saved_at"),
+        "saved_at": datetime.now().isoformat(timespec="seconds"),
+    }
+    pf.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    has_thumb = _project_thumbnail(req.segments, str(PROJECTS_DIR / pid / "thumb.jpg"))
+    if not has_thumb:
+        meta["thumb_url"] = None
+    return meta
+
+
+@app.delete("/api/projects/{pid}")
+def project_delete(pid: str):
+    folder = PROJECTS_DIR / pid
+    if not folder.is_dir():
+        raise HTTPException(404, "Project tidak ditemukan")
+    shutil.rmtree(folder)
+    return {"ok": True}
+
+
 # Static file serving: outputs (video/audio previews) + uploads (clipper source) + frontend
 # ============================================================
+app.mount("/projects", StaticFiles(directory=str(PROJECTS_DIR)), name="projects_library")
 app.mount("/outputs/render", StaticFiles(directory=str(OUTPUT_DIR)), name="render_output")
 app.mount("/outputs/audio", StaticFiles(directory=str(CACHE_DIR / "audio")), name="audio_output")
 app.mount("/uploads", StaticFiles(directory=str(UPLOADS_DIR)), name="uploads")

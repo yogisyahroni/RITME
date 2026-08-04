@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { Play, Download, Trash2, ArrowUp, ArrowDown, Scissors, Clapperboard, Loader2, AlertTriangle, Info, Film, Captions, Undo2, Redo2, Music2, GripVertical, ZoomIn, Zap, Save, Upload, FileText, Volume2, VolumeX } from "lucide-react";
+import { Play, Download, Trash2, ArrowUp, ArrowDown, Scissors, Clapperboard, Loader2, AlertTriangle, Info, Film, Captions, Undo2, Redo2, Music2, GripVertical, ZoomIn, Zap, Save, Upload, FileText, Volume2, VolumeX, Library } from "lucide-react";
 
 const C = {
   bg: "#15130F",
@@ -106,6 +106,10 @@ function TimelineEditor({ narration, footageData, picks }) {
   const [selectedIdx, setSelectedIdx] = useState(null);   // shortcut target
   const [playingAudio, setPlayingAudio] = useState(null); // segmen audio lagi play
   const [restoreNotice, setRestoreNotice] = useState(false);
+  const [saveOpen, setSaveOpen] = useState(false);   // P0.1: modal simpan ke library
+  const [saveName, setSaveName] = useState("");
+  const [saveBusy, setSaveBusy] = useState(false);
+  const [saveMsg, setSaveMsg] = useState("");
 
   const pxPerSec = 28 * zoom;
 
@@ -370,6 +374,35 @@ function TimelineEditor({ narration, footageData, picks }) {
     setPlayingAudio(idx);
   };
 
+  // P0.1: simpan project ke library server-side (projects/<id>/project.json)
+  const saveToLibrary = async () => {
+    if (!saveName.trim()) return;
+    setSaveBusy(true);
+    setError(null);
+    try {
+      const body = {
+        name: saveName.trim(),
+        segments: segments.map(s => ({
+          index: s.index, video_path: s.video_path, narration_text: s.narration_text,
+          duration: s.duration, start_trim: s.start_trim, end_trim: s.end_trim,
+          keywords: s.keywords || [], audio_path: s.audio_path || "", words: s.words || [],
+        })),
+        finishing,
+        narration_meta: { template_name: narration?.template_name || "" },
+        template_name: narration?.template_name || "",
+      };
+      const res = await fetch("/api/projects", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setSaveOpen(false);
+      setSaveName("");
+      setSaveMsg("Tersimpan ke Library ✅");
+      setTimeout(() => setSaveMsg(""), 3000);
+    } catch (e) { setError(`Gagal simpan ke library: ${e}`); }
+    finally { setSaveBusy(false); }
+  };
+
   const exportTimeline = async (preview = false) => {
     setError(null);
     setJob({ progress: 5, message: preview ? "Membuat preview..." : "Merender video..." });
@@ -502,6 +535,11 @@ function TimelineEditor({ narration, footageData, picks }) {
             <span style={{ fontFamily: F.mono, fontSize: 10, color: C.paperDim }}>Auto-preview</span>
           </label>
           <PrimaryButton onClick={regenerateSubtitles} disabled={subtitleBusy || segments.length === 0} loading={subtitleBusy} icon={Captions}>Sinkronkan Subtitle</PrimaryButton>
+          <button onClick={() => { setSaveName(prev => prev || "Project " + new Date().toISOString().slice(0, 10)); setSaveOpen(true); }} disabled={segments.length === 0}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded"
+            style={{ background: segments.length === 0 ? C.panelRaised : "rgba(232,163,61,0.12)", border: `1px solid ${segments.length === 0 ? C.borderSoft : C.amber}66`, color: segments.length === 0 ? C.paperFaint : C.amber, fontFamily: F.mono, fontSize: 10, cursor: segments.length === 0 ? "default" : "pointer", opacity: segments.length === 0 ? 0.6 : 1 }}>
+            <Library size={12} /> SIMPAN KE LIBRARY
+          </button>
           <div className="w-px self-stretch" style={{ background: C.borderSoft, margin: "2px 2px" }} />
           <IconButton onClick={exportProject} icon={Save} disabled={segments.length === 0} title="Simpan project (.ritme.json)" color={C.amber} />
           <IconButton onClick={() => fileInputRef.current?.click()} icon={Upload} title="Muat project (.ritme.json)" color={C.amber} />
@@ -762,6 +800,36 @@ function TimelineEditor({ narration, footageData, picks }) {
           Auto-preview merender preview kecil otomatis 1.5s setelah edit.
         </span>
       </div>
+
+      {saveMsg && (
+        <div className="px-4 py-2.5 rounded" style={{ background: "rgba(127,184,138,0.1)", border: "1px solid rgba(127,184,138,0.4)", color: C.caption, fontFamily: F.body, fontSize: 12, textAlign: "center" }}>
+          {saveMsg}
+        </div>
+      )}
+
+      {saveOpen && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 60, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }} onClick={() => !saveBusy && setSaveOpen(false)}>
+          <div className="rounded-xl p-5" style={{ width: "100%", maxWidth: 420, background: C.panel, border: `1px solid ${C.border}` }} onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-2 mb-1">
+              <Library size={16} color={C.amber} />
+              <span style={{ fontFamily: F.display, fontSize: 15, fontWeight: 700, color: C.paper }}>Simpan ke Library</span>
+            </div>
+            <div style={{ fontFamily: F.body, fontSize: 12, color: C.paperDim, marginBottom: 12 }}>
+              Project tersimpan di server — bisa dibuka lagi dari menu PROJECTS di header, walau ganti browser.
+            </div>
+            <input autoFocus value={saveName} onChange={e => setSaveName(e.target.value)} placeholder="Nama project (mis. Dokumenter Sains Ep 3)"
+              onKeyDown={e => { if (e.key === "Enter") saveToLibrary(); }}
+              style={{ width: "100%", boxSizing: "border-box", fontFamily: F.body, fontSize: 13, color: C.paper, background: C.panelRaised, border: `1px solid ${C.border}`, borderRadius: 6, padding: "9px 12px", outline: "none", marginBottom: 14 }} />
+            <div className="flex items-center justify-end gap-2">
+              <button onClick={() => setSaveOpen(false)} disabled={saveBusy} style={{ fontFamily: F.mono, fontSize: 11, color: C.paperDim, background: "none", border: "none", cursor: "pointer", padding: "8px 10px" }}>BATAL</button>
+              <button onClick={saveToLibrary} disabled={saveBusy || !saveName.trim()} className="flex items-center gap-2 px-4 py-2 rounded"
+                style={{ background: saveBusy || !saveName.trim() ? C.panelRaised : C.amber, color: saveBusy || !saveName.trim() ? C.paperFaint : C.bg, fontFamily: F.mono, fontSize: 11, fontWeight: 700, border: "none", cursor: saveBusy || !saveName.trim() ? "default" : "pointer" }}>
+                {saveBusy ? <Loader2 size={13} className="animate-spin" /> : <Library size={13} />} SIMPAN
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

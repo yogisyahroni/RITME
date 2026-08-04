@@ -899,6 +899,56 @@ def test_batch_render():
             check("items have url", all(i.get("url") for i in items))
 
 
+def test_project_library_p01():
+    """P0.1 Project Library — CRUD + metadata analytics + 404 + sanitize."""
+    import server as server_mod
+    from fastapi.testclient import TestClient
+    with TestClient(server_mod.app) as client:
+        # 400: nama kosong / segments kosong
+        r = client.post("/api/projects", json={"name": "", "segments": []})
+        check("save empty -> 400", r.status_code == 400, f"got {r.status_code}")
+        seg = {"index": 0, "video_path": "", "narration_text": "Halo dunia test",
+               "duration": 6.0, "keywords": ["test"]}
+        r = client.post("/api/projects", json={"name": "Project Test", "segments": [seg],
+                                               "finishing": {"add_music": True},
+                                               "template_name": "dokumenter"})
+        check("save ok", r.status_code == 200, f"got {r.status_code}: {r.text[:200]}")
+        meta = r.json()
+        pid = meta["id"]
+        check("meta id present", bool(pid), f"{meta}")
+        check("meta name", meta["name"] == "Project Test", f"{meta}")
+        check("meta wpm", meta["wpm"] == 30, f"wpm={meta.get('wpm')}")  # 3 kata / 6s * 60
+        check("meta scene_count", meta["scene_count"] == 0, f"{meta}")  # no video_path
+        # list
+        rl = client.get("/api/projects")
+        ids = [p["id"] for p in rl.json()["projects"]]
+        check("list contains id", pid in ids, f"{ids}")
+        check("list has thumb_url", all(p.get("thumb_url") for p in rl.json()["projects"]))
+        # get by id
+        rg = client.get(f"/api/projects/{pid}")
+        check("get ok", rg.status_code == 200, f"got {rg.status_code}")
+        gj = rg.json()
+        check("get segments", len(gj["segments"]) == 1)
+        check("get finishing", gj["finishing"]["add_music"] is True)
+        # 404
+        check("get 404", client.get("/api/projects/nonexistent").status_code == 404)
+        check("delete 404", client.delete("/api/projects/nonexistent").status_code == 404)
+        # put update — id & created_at dipertahankan
+        seg2 = {"index": 1, "video_path": "", "narration_text": "A B C D E F",
+                "duration": 6.0}
+        rp = client.put(f"/api/projects/{pid}", json={"name": "Project Renamed",
+                                                      "segments": [seg, seg2]})
+        check("put ok", rp.status_code == 200, f"got {rp.status_code}: {rp.text[:200]}")
+        check("put same id", rp.json()["id"] == pid)
+        check("put name", rp.json()["name"] == "Project Renamed")
+        rg2 = client.get(f"/api/projects/{pid}").json()
+        check("put segments count", len(rg2["segments"]) == 2)
+        check("put keeps created_at", bool(rg2.get("created_at")))
+        # delete
+        check("delete ok", client.delete(f"/api/projects/{pid}").status_code == 200)
+        check("list empty after delete", pid not in [p["id"] for p in client.get("/api/projects").json()["projects"]])
+
+
 def main():
     which = set(sys.argv[1:])
     run_all = "--all" in which or len(which) == 0
@@ -919,6 +969,7 @@ def main():
         ("multi_voice", test_multi_voice),
         ("watermark", test_watermark),
         ("batch_render", test_batch_render),
+        ("project_library_p01", test_project_library_p01),
     ]
     if run_all or "--with-server" in which:
         tests.append(("server_render", test_server_render_endpoint))

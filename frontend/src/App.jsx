@@ -5,8 +5,9 @@ import BatchRenderTool from "./BatchRenderTool.jsx";
 import {
   Film, FileText, Mic, ScanSearch, Clapperboard,
   Check, Lock, RefreshCw, Download, Info, ChevronRight, Play,
-  Upload, AlertTriangle, X, Plus, Loader2, Scissors, Trash2, Layers, ArrowLeft
+  Upload, AlertTriangle, X, Plus, Loader2, Scissors, Trash2, Layers, ArrowLeft, FolderOpen
 } from "lucide-react";
+import ProjectsPage from "./ProjectsPage.jsx";
 
 /* ============================================================
    DESIGN TOKENS
@@ -77,6 +78,7 @@ const NAV_ITEMS = [
   { id: "#/clipper", label: "CLIPPER", icon: Clapperboard },
   { id: "#/batch", label: "BATCH", icon: Layers },
   { id: "#/extractor", label: "EXTRACTOR", icon: ScanSearch },
+  { id: "#/projects", label: "PROJECTS", icon: FolderOpen },
 ];
 
 function goStudio() {
@@ -1752,6 +1754,7 @@ export default function Ritme() {
       {route === "#/clipper" && <ClipperTool variant="page" onClose={goStudio} />}
       {route === "#/batch" && <BatchRenderTool variant="page" onClose={goStudio} />}
       {route === "#/extractor" && <FootageExtractorTool variant="page" onClose={goStudio} />}
+      {route === "#/projects" && <ProjectsPage onClose={goStudio} />}
 
       <div className="px-4 sm:px-6 py-4 text-center" style={{ borderTop: `1px solid ${C.border}` }}>
         <span style={{ fontFamily: F.mono, fontSize: 10, color: C.paperFaint, letterSpacing: "0.04em" }}>
