@@ -1458,19 +1458,52 @@ class ProjectSaveRequest(BaseModel):
     sticker_overlays: list[StickerOverlay] = []
 
 
+def _analytics(segments: list[TimelineSegment]) -> dict:
+    """P3.2: statistik lengkap project — speed-aware duration, WPM per segmen,
+    shot pacing, distribusi kata. Dipakai meta kartu + endpoint analytics."""
+    if not segments:
+        return {"segments_count": 0, "duration": 0, "words": 0, "wpm": 0,
+                "avg_shot_duration": 0, "max_duration": 0, "min_duration": 0,
+                "speed_variants": [], "wordiest_index": -1}
+    per_seg = []
+    for s in segments:
+        base = max(float(s.duration or 0), 0)
+        speed = max(0.25, min(float(getattr(s, "speed", 1.0) or 1.0), 4.0))
+        final = base / speed
+        w = len((s.narration_text or "").split())
+        per_seg.append({"index": s.index, "duration": round(final, 2), "words": w,
+                        "wpm": round(w / (final / 60), 1) if final > 0 else 0,
+                        "speed": speed, "has_footage": bool(s.video_path)})
+    total = sum(p["duration"] for p in per_seg)
+    words = sum(p["words"] for p in per_seg)
+    wpm = round(words / (total / 60), 1) if total > 0 else 0
+    durs = [p["duration"] for p in per_seg]
+    wordiest = max(per_seg, key=lambda p: p["words"], default=None)
+    return {
+        "segments_count": len(segments),
+        "scene_count": sum(1 for p in per_seg if p["has_footage"]),
+        "duration": round(total, 2),
+        "words": words,
+        "wpm": wpm,
+        "avg_shot_duration": round(total / len(per_seg), 2) if per_seg else 0,
+        "max_duration": max(durs), "min_duration": min(durs),
+        "speed_variants": sorted({p["speed"] for p in per_seg}),
+        "wordiest_index": wordiest["index"] if wordiest else -1,
+        "per_segment": per_seg,
+    }
+
+
 def _project_meta(pid: str, name: str, segments: list[TimelineSegment],
                   finishing: dict, narration_meta: dict, template_name: str) -> dict:
     """Metadata kartu project — dipakai buat grid list (P3.2 analytics included)."""
-    dur = sum(max(float(s.duration or 0), 0) for s in segments)
-    words = sum(len((s.narration_text or "").split()) for s in segments)
-    wpm = round(words / (dur / 60), 1) if dur > 0 else 0
+    a = _analytics(segments)
     return {
         "id": pid,
         "name": name,
-        "segments_count": len(segments),
-        "scene_count": len([s for s in segments if s.video_path]),
-        "duration": round(dur, 2),
-        "wpm": wpm,
+        "segments_count": a["segments_count"],
+        "scene_count": a["scene_count"],
+        "duration": a["duration"],
+        "wpm": a["wpm"],
         "template_name": template_name or (narration_meta or {}).get("template_name", ""),
         "thumb_url": f"/projects/{pid}/thumb.jpg",
     }
@@ -1554,6 +1587,24 @@ def project_get(pid: str):
         return json.loads(pf.read_text(encoding="utf-8"))
     except Exception:
         raise HTTPException(500, "File project corrupt")
+
+
+@app.get("/api/projects/{pid}/analytics")
+def project_analytics(pid: str):
+    """P3.2: statistik project lengkap (speed-aware) dari project tersimpan."""
+    pf = PROJECTS_DIR / pid / "project.json"
+    if not pf.exists():
+        raise HTTPException(404, "Project tidak ditemukan")
+    try:
+        data = json.loads(pf.read_text(encoding="utf-8"))
+    except Exception:
+        raise HTTPException(500, "File project corrupt")
+    segs = [TimelineSegment(**s) for s in data.get("segments", [])]
+    a = _analytics(segs)
+    a["name"] = data.get("name", "")
+    a["saved_at"] = data.get("saved_at", "")
+    a["template_name"] = data.get("template_name", "") or (data.get("finishing") or {}).get("template_name", "")
+    return a
 
 
 @app.put("/api/projects/{pid}")

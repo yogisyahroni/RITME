@@ -1274,6 +1274,50 @@ def test_speed_p21():
         check("atempo durasi ~0.5s", abs(frames / rate - 0.5) < 0.1, f"{frames/rate:.2f}s")
 
 
+def test_analytics_p32():
+    """P3.2 analytics — _analytics speed-aware + endpoint /api/projects/{pid}/analytics."""
+    import server as server_mod
+    from fastapi.testclient import TestClient
+
+    # 1. unit: 2 segmen, 1 speed 2x -> duration speed-aware, wpm, wordiest
+    segs = [
+        server_mod.TimelineSegment(index=0, video_path="/x/0.mp4", narration_text="Halo dunia",
+                                   duration=10.0, speed=1.0),
+        server_mod.TimelineSegment(index=1, video_path="", narration_text="",
+                                   duration=10.0, speed=2.0),
+    ]
+    a = server_mod._analytics(segs)
+    check("durasi total 15 (10 + 10/2)", abs(a["duration"] - 15.0) < 1e-6, f"{a['duration']}")
+    check("kata total 2", a["words"] == 2, f"{a['words']}")
+    check("wpm = 2/(15/60) = 8", abs(a["wpm"] - 8.0) < 1e-6, f"{a['wpm']}")
+    check("scene_count 1 (hanya yg ada video)", a["scene_count"] == 1, f"{a['scene_count']}")
+    check("avg shot 7.5", abs(a["avg_shot_duration"] - 7.5) < 1e-6, f"{a['avg_shot_duration']}")
+    check("speed variants [1,2]", a["speed_variants"] == [1.0, 2.0], f"{a['speed_variants']}")
+    check("wordiest index 0", a["wordiest_index"] == 0, f"{a['wordiest_index']}")
+    check("empty -> zero", server_mod._analytics([])["duration"] == 0)
+
+    # 2. endpoint: save -> GET analytics -> cocok
+    with TestClient(server_mod.app) as client:
+        r = client.post("/api/projects", json={
+            "name": "analytics_test",
+            "segments": [{"index": 0, "video_path": "/x/0.mp4", "narration_text": "Halo dunia",
+                          "duration": 10.0, "speed": 1.0},
+                         {"index": 1, "video_path": "", "narration_text": "",
+                          "duration": 10.0, "speed": 2.0}],
+            "finishing": {}, "narration_meta": {}, "template_name": "",
+        })
+        check("save 200", r.status_code == 200, f"got {r.status_code}: {r.text[:100]}")
+        pid = r.json().get("id")
+        check("meta wpm speed-aware", abs(r.json().get("wpm", 0) - 8.0) < 1e-6,
+              f"wpm {r.json().get('wpm')}")
+        r2 = client.get(f"/api/projects/{pid}/analytics")
+        check("analytics 200", r2.status_code == 200, f"got {r2.status_code}")
+        d = r2.json()
+        check("analytics durasi 15", abs(d["duration"] - 15.0) < 1e-6, f"{d['duration']}")
+        check("analytics per_segment 2", len(d["per_segment"]) == 2, f"{len(d['per_segment'])}")
+        check("analytics nama", d["name"] == "analytics_test", f"{d['name']}")
+
+
 def main():
     which = set(sys.argv[1:])
     run_all = "--all" in which or len(which) == 0
@@ -1301,6 +1345,7 @@ def main():
         ("sticker_p14", test_sticker_p14),
         ("aspect_p22", test_aspect_p22),
         ("speed_p21", test_speed_p21),
+        ("analytics_p32", test_analytics_p32),
     ]
     if run_all or "--with-server" in which:
         tests.append(("server_render", test_server_render_endpoint))

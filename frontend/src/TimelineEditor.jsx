@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
-import { Play, Download, Trash2, ArrowUp, ArrowDown, Scissors, Clapperboard, Loader2, AlertTriangle, Info, Film, Captions, Undo2, Redo2, Music2, GripVertical, ZoomIn, Zap, Save, Upload, FileText, Volume2, VolumeX, Library } from "lucide-react";
+import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { Play, Download, Trash2, ArrowUp, ArrowDown, Scissors, Clapperboard, Loader2, AlertTriangle, Info, Film, Captions, Undo2, Redo2, Music2, GripVertical, ZoomIn, Zap, Save, Upload, FileText, Volume2, VolumeX, Library, BarChart3, X } from "lucide-react";
 
 const C = {
   bg: "#15130F",
@@ -115,6 +115,9 @@ function TimelineEditor({ narration, footageData, picks }) {
   const [titleOverlays, setTitleOverlays] = useState([]);
   // P1.4: sticker/gambar overlay manual per segmen
   const [stickerOverlays, setStickerOverlays] = useState([]);
+
+  // P3.2: panel analytics live
+  const [showAnalytics, setShowAnalytics] = useState(false);
 
   const STICKER_POSITIONS = [
     ["0.15,0.2", "Atas Kiri"], ["0.5,0.15", "Atas Tengah"], ["0.85,0.2", "Atas Kanan"],
@@ -580,6 +583,28 @@ function TimelineEditor({ narration, footageData, picks }) {
 
   const segDur = (s) => Math.max((s.duration || 0) - (s.start_trim || 0) - (s.end_trim || 0), 0.5) / (s.speed || 1.0);
 
+  // P3.2: analytics live (speed-aware) — dihitung ulang tiap segments berubah
+  const analytics = useMemo(() => {
+    if (!segments.length) return null;
+    const per = segments.map((s) => {
+      const dur = segDur(s);
+      const words = (s.narration_text || "").split(/\s+/).filter(Boolean).length;
+      return { index: s.index, dur, words, wpm: dur > 0 ? words / (dur / 60) : 0,
+               speed: s.speed || 1, hasFootage: !!s.video_path };
+    });
+    const total = per.reduce((a, p) => a + p.dur, 0);
+    const words = per.reduce((a, p) => a + p.words, 0);
+    const wordiest = per.reduce((a, p) => p.words > (a?.words ?? -1) ? p : a, null);
+    return {
+      total, words, wpm: total > 0 ? words / (total / 60) : 0,
+      avg: total / (per.length || 1), max: Math.max(...per.map(p => p.dur)),
+      min: Math.min(...per.map(p => p.dur)),
+      sceneCount: per.filter(p => p.hasFootage).length,
+      speeds: [...new Set(per.map(p => p.speed))].sort(),
+      wordiest,
+    };
+  }, [segments]);
+
   const totalDuration = segments.reduce((a, s) => a + segDur(s), 0);
 
   // Posisi kumulatif tiap segmen (detik) — buat layout track
@@ -632,6 +657,7 @@ function TimelineEditor({ narration, footageData, picks }) {
             style={{ background: segments.length === 0 ? C.panelRaised : "rgba(232,163,61,0.12)", border: `1px solid ${segments.length === 0 ? C.borderSoft : C.amber}66`, color: segments.length === 0 ? C.paperFaint : C.amber, fontFamily: F.mono, fontSize: 10, cursor: segments.length === 0 ? "default" : "pointer", opacity: segments.length === 0 ? 0.6 : 1 }}>
             <Library size={12} /> SIMPAN KE LIBRARY
           </button>
+          <IconButton onClick={() => setShowAnalytics(a => !a)} icon={BarChart3} title="Analytics project (P3.2)" color={showAnalytics ? C.caption : C.paperDim} />
           <div className="w-px self-stretch" style={{ background: C.borderSoft, margin: "2px 2px" }} />
           <IconButton onClick={exportProject} icon={Save} disabled={segments.length === 0} title="Simpan project (.ritme.json)" color={C.amber} />
           <IconButton onClick={() => fileInputRef.current?.click()} icon={Upload} title="Muat project (.ritme.json)" color={C.amber} />
@@ -645,6 +671,50 @@ function TimelineEditor({ narration, footageData, picks }) {
           <Info size={14} color={C.amber} />
           <span style={{ fontFamily: F.body, fontSize: 12, color: C.paperDim, flex: 1 }}>Project tersimpan otomatis berhasil dipulihkan (edit terakhir tetap tersimpan di browser ini).</span>
           <button onClick={() => setRestoreNotice(false)} style={{ fontFamily: F.mono, fontSize: 11, color: C.amber, background: "none", border: "none", cursor: "pointer", padding: 0 }}>OK</button>
+        </div>
+      )}
+
+      {/* ===== P3.2: Analytics panel ===== */}
+      {showAnalytics && (
+        <div className="rounded p-4" style={{ background: C.panel, border: `1px solid ${C.caption}44` }}>
+          <div className="flex items-center justify-between mb-3">
+            <span style={{ fontFamily: F.mono, fontSize: 11, color: C.caption, letterSpacing: "0.08em" }}>ANALYTICS PROJECT</span>
+            <IconButton onClick={() => setShowAnalytics(false)} icon={X} title="Tutup" color={C.paperFaint} />
+          </div>
+          {!analytics ? (
+            <span style={{ fontFamily: F.body, fontSize: 12, color: C.paperFaint }}>Belum ada segmen — generate narasi dulu buat lihat statistik.</span>
+          ) : (
+            <>
+              <div className="grid gap-2" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))" }}>
+                {[
+                  ["Durasi total", fmt(analytics.total), C.paper],
+                  ["Kata total", String(analytics.words), C.amber],
+                  ["WPM", analytics.wpm.toFixed(1), C.cyan],
+                  ["Avg shot", `${analytics.avg.toFixed(1)}s`, C.caption],
+                  ["Segmen", String(segments.length), C.paperDim],
+                  ["Scene video", String(analytics.sceneCount), C.paperDim],
+                  ["Terpanjang", `${analytics.max.toFixed(1)}s`, C.red],
+                  ["Terpendek", `${analytics.min.toFixed(1)}s`, C.paperDim],
+                ].map(([l, v, c]) => (
+                  <div key={l} className="rounded p-2.5" style={{ background: C.panelRaised, border: `1px solid ${C.borderSoft}` }}>
+                    <div style={{ fontFamily: F.mono, fontSize: 9, color: C.paperFaint, letterSpacing: "0.06em" }}>{l.toUpperCase()}</div>
+                    <div style={{ fontFamily: F.display, fontSize: 18, fontWeight: 700, color: c, marginTop: 2 }}>{v}</div>
+                  </div>
+                ))}
+              </div>
+              <div className="flex flex-wrap gap-2 mt-3">
+                <span style={{ fontFamily: F.mono, fontSize: 10, color: C.paperDim, alignSelf: "center" }}>SPEED DIGUNAKAN:</span>
+                {analytics.speeds.map(sp => (
+                  <span key={sp} className="rounded px-2 py-0.5" style={{ fontFamily: F.mono, fontSize: 10, color: C.cyan, background: `${C.cyan}1a`, border: `1px solid ${C.cyan}44` }}>{sp}x</span>
+                ))}
+                {analytics.wordiest && (
+                  <span style={{ fontFamily: F.body, fontSize: 10.5, color: C.paperFaint, alignSelf: "center" }}>
+                    Segmen paling padat kata: <b style={{ color: C.amber }}>#{analytics.wordiest.index + 1}</b> ({analytics.wordiest.words} kata · {analytics.wordiest.wpm.toFixed(0)} WPM)
+                  </span>
+                )}
+              </div>
+            </>
+          )}
         </div>
       )}
 
