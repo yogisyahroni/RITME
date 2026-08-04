@@ -871,6 +871,9 @@ function TimelineEditor({ narration, footageData, picks }) {
             <select value={finishing.transition_style} onChange={e => setFinishing({ ...finishing, transition_style: e.target.value })} style={{ fontFamily: F.mono, fontSize: 11, color: C.paper, background: C.panelRaised, border: `1px solid ${C.border}`, borderRadius: 3, padding: "3px 6px", outline: "none" }}>
               <option value="hard_cut">Hard Cut</option>
               <option value="crossfade">Crossfade</option>
+              <option value="dip_to_black">Dip to Black</option>
+              <option value="slide">Slide</option>
+              <option value="zoom">Zoom</option>
             </select>
           </label>
           <label className="flex items-center gap-2" style={{ cursor: "pointer" }}>

@@ -1043,6 +1043,63 @@ def test_filter_p13():
         check("preview warm 200", r2.status_code == 200, f"got {r2.status_code}: {r2.text[:150]}")
 
 
+def test_transition_p12():
+    """P1.2 transitions — tiap tipe render + frame di boundary beda karakteristik."""
+    import numpy as np
+    import pipeline.stage5_assembly as s5
+    from moviepy import VideoFileClip, ImageClip
+    import server as server_mod
+    from fastapi.testclient import TestClient
+
+    # unit: zoom push mengubah frame selama window (gradasi R)
+    base = np.zeros((64, 64, 3), dtype=np.uint8)
+    base[..., 0] = np.linspace(0, 255, 64).astype(np.uint8)
+    zp = s5._zoom_push(ImageClip(base).with_duration(1.0), 0.5, 64, 64)
+    f0 = zp.get_frame(0.01)
+    f1 = zp.get_frame(0.9)
+    check("zoom push frame beda", not np.array_equal(f0, f1), "")
+
+    # endpoint: render tiap tipe transisi, 2 segmen (red 3s -> blue 3s)
+    red = make_test_video(Path("cache") / "test" / "tr_red.mp4", "red", 3.0, size="360x640")
+    blue = make_test_video(Path("cache") / "test" / "tr_blue.mp4", "blue", 3.0, size="360x640")
+    segs = [
+        {"index": 0, "video_path": str(red), "duration": 3.0, "narration_text": "A", "start_trim": 0, "end_trim": 0},
+        {"index": 1, "video_path": str(blue), "duration": 3.0, "narration_text": "B", "start_trim": 0, "end_trim": 0},
+    ]
+    body_base = {"segments": segs, "narration_audio_path": "", "output_name": "tran"}
+
+    def frame_at(tr, t):
+        with TestClient(server_mod.app) as client:
+            r = client.post("/api/timeline/preview", json={**body_base, "transition_style": tr})
+            check(f"{tr} render 200", r.status_code == 200, f"got {r.status_code}: {r.text[:120]}")
+            if r.status_code != 200:
+                return np.zeros((10, 10, 3), dtype=np.uint8)
+            tmp = Path("cache") / "test" / f"tran_{tr}.mp4"
+            tmp.write_bytes(r.content)
+        with VideoFileClip(str(tmp)) as vc:
+            return vc.get_frame(t)
+
+    fr_hard = frame_at("hard_cut", 3.05)
+    check("hard_cut -> blue murni", fr_hard[..., 2].mean() > 150 and fr_hard[..., 0].mean() < 50,
+          f"R{fr_hard[...,0].mean():.0f} B{fr_hard[...,2].mean():.0f}")
+
+    fr_xf = frame_at("crossfade", 2.75)
+    check("crossfade campuran", fr_xf[..., 0].mean() > 50 and fr_xf[..., 2].mean() > 50,
+          f"R{fr_xf[...,0].mean():.0f} B{fr_xf[...,2].mean():.0f}")
+
+    fr_dip = frame_at("dip_to_black", 2.75)
+    check("dip lebih gelap dari crossfade", fr_dip.mean() < fr_xf.mean() * 0.75,
+          f"dip {fr_dip.mean():.0f} vs xf {fr_xf.mean():.0f}")
+
+    fr_slide = frame_at("slide", 3.05)
+    check("slide red dominan (belum nutup)", fr_slide[..., 0].mean() > 120,
+          f"R{fr_slide[...,0].mean():.0f}")
+
+    fr_zoom = frame_at("zoom", 3.05)
+    check("zoom blue murni (push nutup)", fr_zoom[..., 2].mean() > 150 and fr_zoom[..., 0].mean() < 50,
+          f"R{fr_zoom[...,0].mean():.0f} B{fr_zoom[...,2].mean():.0f}")
+
+
 def main():
     which = set(sys.argv[1:])
     run_all = "--all" in which or len(which) == 0
@@ -1066,6 +1123,7 @@ def main():
         ("project_library_p01", test_project_library_p01),
         ("title_overlay_p11", test_title_overlay_p11),
         ("filter_p13", test_filter_p13),
+        ("transition_p12", test_transition_p12),
     ]
     if run_all or "--with-server" in which:
         tests.append(("server_render", test_server_render_endpoint))

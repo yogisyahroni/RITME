@@ -37,7 +37,7 @@ from moviepy import (
     VideoFileClip, AudioFileClip, concatenate_videoclips,
     CompositeVideoClip, CompositeAudioClip, ColorClip, ImageClip,
 )
-from moviepy.video.fx import CrossFadeIn, CrossFadeOut
+from moviepy.video.fx import CrossFadeIn, CrossFadeOut, FadeIn, FadeOut, SlideIn
 
 from config import OUTPUT_DIR, OUTPUT_RESOLUTION, \
     TRANSITION_ENABLED, TRANSITION_DURATION, TRANSITION_MIN_SHOT, \
@@ -111,6 +111,38 @@ def _apply_kenburns(clip, seed: int, target_w: int, target_h: int):
 
     zoomed = clip.resized(factor)
     return zoomed.cropped(x1=0, y1=0, x2=target_w, y2=target_h)
+
+
+def _zoom_push(clip, fade: float, target_w: int, target_h: int):
+    """P1.2 zoom transition — incoming shot starts 8% larger and settles to
+    full frame over the fade window (CapCut-style push-in). Corner-anchored
+    crop keeps it robust in moviepy 2.1.2 (same pattern as Ken Burns)."""
+    scale = 1.08
+    f = max(fade, 0.001)
+
+    def factor(t):
+        progress = min(max(t / f, 0.0), 1.0)
+        return 1.0 + (scale - 1.0) * (1.0 - progress)
+
+    zoomed = clip.resized(factor)
+    return zoomed.cropped(x1=0, y1=0, x2=target_w, y2=target_h)
+
+
+def _extend_tail(clip, extra: float):
+    """P1.2: freeze the last frame of `clip` for `extra` seconds. Push
+    transitions (slide/zoom) don't overlap the cursor, so the outgoing shot
+    must stay visible until the incoming fully covers it — otherwise a black
+    gap appears between the cut and the transition finishing."""
+    if extra <= 0:
+        return clip
+    start = getattr(clip, "start", 0.0) or 0.0
+    dur = clip.duration
+    try:
+        last = clip.get_frame(max(dur - 0.05, 0.0))
+    except Exception:
+        return clip
+    frozen = ImageClip(last).with_duration(extra)
+    return concatenate_videoclips([clip, frozen]).with_start(start)
 
 
 def _build_segment_clip(footage_path: str, sub_duration: float, target_w: int, target_h: int,
@@ -410,7 +442,15 @@ def assemble_video(timed_segments: list[dict], footage_map: dict[int, dict],
     if segment_audio_paths is None:
         segment_audio_paths = [s.get("audio_path", "") for s in timed_segments]
 
-    transitions_on = (transition_style == "crossfade") if transition_style is not None else TRANSITION_ENABLED
+    # P1.2: transition_style -> per-boundary transition name.
+    # "crossfade"|"dip_to_black"|"slide"|"zoom" = global transition style,
+    # "hard_cut" = off; None -> TRANSITION_ENABLED config (legacy crossfade).
+    if transition_style in ("crossfade", "dip_to_black", "slide", "zoom"):
+        cut_transition = transition_style
+    elif transition_style == "hard_cut":
+        cut_transition = "none"
+    else:
+        cut_transition = "crossfade" if TRANSITION_ENABLED else "none"
     kenburns_on = ken_burns if ken_burns is not None else KEN_BURNS_ENABLED
     music_on = add_music if add_music is not None else MUSIC_ENABLED
 
@@ -465,14 +505,17 @@ def assemble_video(timed_segments: list[dict], footage_map: dict[int, dict],
             })
             cursor += sub_dur
 
-    # Decide crossfades: only boundaries where the FOLLOWING shot is long
-    # enough — short punchy cuts stay hard cuts.
+    # Decide transitions: only boundaries where the FOLLOWING shot is long
+    # enough — short punchy cuts stay hard cuts. Each layer records its
+    # incoming transition; slide alternates sides for variety.
     n = len(layers)
-    if transitions_on and n > 1:
+    if cut_transition != "none" and n > 1:
         for i in range(1, n):
             if layers[i]["dur"] >= TRANSITION_MIN_SHOT:
                 fade = min(TRANSITION_DURATION, 0.9 * min(layers[i - 1]["dur"], layers[i]["dur"]))
                 layers[i]["fade_in"] = max(fade, 0.05)
+                layers[i]["transition"] = cut_transition
+                layers[i]["slide_side"] = "left" if (i % 2 == 0) else "right"
 
     # Compensate overlap: extend the FINAL shot so the total timeline length
     # stays exactly sum(durations) == narration duration (sync untouched).
@@ -496,18 +539,40 @@ def assemble_video(timed_segments: list[dict], footage_map: dict[int, dict],
             filter_name=L.get("filter_name", "original"),
         )
         fade = L["fade_in"]
-        if fade > 0:
-            clip = clip.with_effects([CrossFadeIn(fade)])
-            if i > 0:
-                # outgoing layer fades out over the same window
-                prev = video_layers[i - 1]
-                video_layers[i - 1] = prev.with_effects([CrossFadeOut(fade)])
-        # moviepy 2.x CrossFadeIn makes the clip transparent for the first
-        # `fade` seconds WITHOUT shifting its start. Start the clip `fade`
-        # seconds EARLY so the fade-in overlaps the previous shot's fade-out
-        # tail — the fully-visible content still begins exactly at the cursor
-        # position, so audio/subtitle sync is untouched.
-        clip = clip.with_start(L["start"] - fade)
+        tr = L.get("transition", "none")
+        # Fade-based transitions (crossfade / dip-to-black) start the clip
+        # `fade` seconds EARLY so the incoming overlaps the outgoing tail —
+        # fully-visible content still begins exactly at the cursor, so
+        # audio/subtitle sync is untouched. Slide/zoom push transitions do
+        # NOT shift the start: the incoming shot simply covers the outgoing
+        # one from the cursor, so total duration stays exact.
+        if fade > 0 and tr != "none":
+            if tr == "crossfade":
+                clip = clip.with_effects([CrossFadeIn(fade)])
+                if i > 0:
+                    prev = video_layers[i - 1]
+                    video_layers[i - 1] = prev.with_effects([CrossFadeOut(fade)])
+                clip = clip.with_start(L["start"] - fade)
+            elif tr == "dip_to_black":
+                if i > 0:
+                    prev = video_layers[i - 1]
+                    video_layers[i - 1] = prev.with_effects([FadeOut(fade, final_color=[0, 0, 0])])
+                clip = clip.with_effects([FadeIn(fade, initial_color=[0, 0, 0])])
+                clip = clip.with_start(L["start"] - fade)
+            elif tr == "slide":
+                clip = clip.with_effects([SlideIn(fade, side=L.get("slide_side", "left"))])
+                clip = clip.with_start(L["start"])
+                if i > 0:
+                    video_layers[i - 1] = _extend_tail(video_layers[i - 1], fade)
+            elif tr == "zoom":
+                clip = _zoom_push(clip, fade, target_w, target_h)
+                clip = clip.with_start(L["start"])
+                if i > 0:
+                    video_layers[i - 1] = _extend_tail(video_layers[i - 1], fade)
+            else:
+                clip = clip.with_start(L["start"])
+        else:
+            clip = clip.with_start(L["start"])
         video_layers.append(clip)
 
     if not video_layers:
