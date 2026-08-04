@@ -1164,6 +1164,55 @@ def test_sticker_p14():
             check("piksel kuning sticker tampil", yellow > 100, f"got {yellow}")
 
 
+def test_aspect_p22():
+    """P2.2 multi-aspect — helper mapping + preview render 3 aspect, dimensi & crop benar."""
+    import server as server_mod
+    from fastapi.testclient import TestClient
+    from moviepy import VideoFileClip
+
+    check("9:16 -> 1080x1920", server_mod._aspect_resolution("9:16") == (1080, 1920),
+          f"{server_mod._aspect_resolution('9:16')}")
+    check("16:9 -> 1920x1080", server_mod._aspect_resolution("16:9") == (1920, 1080),
+          f"{server_mod._aspect_resolution('16:9')}")
+    check("1:1 -> 1080x1080", server_mod._aspect_resolution("1:1") == (1080, 1080),
+          f"{server_mod._aspect_resolution('1:1')}")
+    from config import OUTPUT_RESOLUTION
+    check("original -> OUTPUT_RESOLUTION",
+          server_mod._aspect_resolution("original") == OUTPUT_RESOLUTION,
+          f"{server_mod._aspect_resolution('original')} vs {OUTPUT_RESOLUTION}")
+    check("invalid -> fallback 9:16", server_mod._aspect_resolution("4:3") == (1080, 1920),
+          f"{server_mod._aspect_resolution('4:3')}")
+    pw, ph = server_mod._preview_resolution("9:16")
+    check("preview even", pw % 2 == 0 and ph % 2 == 0, f"{pw}x{ph}")
+    sw, sh = server_mod._preview_resolution("1:1")
+    check("preview 1:1 square", sw == sh, f"{sw}x{sh}")
+    ww, wh = server_mod._preview_resolution("16:9")
+    check("preview 16:9 ratio", abs(ww / wh - 16 / 9) < 0.05, f"{ww/wh:.3f}")
+
+    # render preview 3 aspect dari source 9:16 solid blue -> crop center, warna utuh
+    clip = make_test_video(Path("cache") / "test" / "asp_base.mp4", "blue", 3.0, size="360x640")
+    body = {
+        "segments": [{"index": 0, "video_path": str(clip), "narration_text": "T",
+                      "duration": 3.0, "start_trim": 0, "end_trim": 0}],
+        "narration_audio_path": "", "output_name": "asp_preview",
+    }
+    with TestClient(server_mod.app) as client:
+        for aspect, want_ratio in [("9:16", 9 / 16), ("16:9", 16 / 9), ("1:1", 1.0)]:
+            r = client.post("/api/timeline/preview", json={**body, "aspect_ratio": aspect})
+            check(f"preview {aspect} 200", r.status_code == 200, f"got {r.status_code}: {r.text[:120]}")
+            if r.status_code != 200:
+                continue
+            tmp = Path("cache") / "test" / f"asp_{aspect.replace(':', '')}.mp4"
+            tmp.write_bytes(r.content)
+            with VideoFileClip(str(tmp)) as vc:
+                h, w, _ = vc.get_frame(1.5).shape
+                fr = vc.get_frame(1.5)
+            ratio = w / h
+            check(f"{aspect} dimensi ratio", abs(ratio - want_ratio) < 0.06, f"{w}x{h} ({ratio:.3f})")
+            blue = (fr[..., 2] > 180).mean()
+            check(f"{aspect} crop center masih biru", blue > 0.8, f"blue {blue:.2f}")
+
+
 def main():
     which = set(sys.argv[1:])
     run_all = "--all" in which or len(which) == 0
@@ -1189,6 +1238,7 @@ def main():
         ("filter_p13", test_filter_p13),
         ("transition_p12", test_transition_p12),
         ("sticker_p14", test_sticker_p14),
+        ("aspect_p22", test_aspect_p22),
     ]
     if run_all or "--with-server" in which:
         tests.append(("server_render", test_server_render_endpoint))
@@ -1202,6 +1252,8 @@ def main():
         tests.append(("clip_smoke", test_clip_smoke))
 
     for name, fn in tests:
+        if not run_all and name not in which:
+            continue
         print(f"\n=== {name} ===")
         try:
             fn()

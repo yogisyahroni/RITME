@@ -77,6 +77,7 @@ function TimelineEditor({ narration, footageData, picks }) {
     caption_style: "minimal-white-center",
     transition_style: "hard_cut",
     ken_burns: false,
+    aspect_ratio: "9:16",
     watermark_path: "",
     watermark_name: "",
     watermark_pos: "bottom-right",
@@ -504,6 +505,7 @@ function TimelineEditor({ narration, footageData, picks }) {
         caption_style: finishing.caption_style,
         transition_style: finishing.transition_style,
         ken_burns: finishing.ken_burns,
+        aspect_ratio: finishing.aspect_ratio || "9:16",
         watermark_path: finishing.watermark_path || null,
         watermark_pos: finishing.watermark_pos,
         title_overlays: titleOverlays.map(o => ({
@@ -1003,6 +1005,19 @@ function TimelineEditor({ narration, footageData, picks }) {
             <input type="checkbox" checked={finishing.ken_burns} onChange={e => setFinishing({ ...finishing, ken_burns: e.target.checked })} style={{ accentColor: C.tally }} />
             <span style={{ fontFamily: F.body, fontSize: 12, color: C.paper }}>Ken Burns (zoom pelan)</span>
           </label>
+          <div className="flex items-center gap-2">
+            <span style={{ fontFamily: F.mono, fontSize: 10, color: C.paperFaint }}>Aspect</span>
+            {[["9:16", "TikTok 9:16"], ["16:9", "YouTube 16:9"], ["1:1", "IG 1:1"]].map(([v, l]) => (
+              <button key={v} onClick={() => setFinishing({ ...finishing, aspect_ratio: v })}
+                className="px-2.5 py-1 rounded"
+                style={{ fontFamily: F.mono, fontSize: 10.5, cursor: "pointer",
+                  background: finishing.aspect_ratio === v ? C.tally : C.panelRaised,
+                  color: finishing.aspect_ratio === v ? "#0B0A07" : C.paperDim,
+                  border: `1px solid ${finishing.aspect_ratio === v ? C.tally : C.border}` }}>
+                {l}
+              </button>
+            ))}
+          </div>
           <div className="flex items-center gap-2 flex-wrap">
             <span style={{ fontFamily: F.mono, fontSize: 10, color: C.paperFaint }}>Watermark</span>
             {finishing.watermark_name ? (

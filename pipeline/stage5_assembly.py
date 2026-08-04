@@ -32,12 +32,13 @@ NOTE at the bottom of this file for the equivalent calls.
 """
 from pathlib import Path
 import os
+import subprocess
 
 from moviepy import (
     VideoFileClip, AudioFileClip, concatenate_videoclips,
     CompositeVideoClip, CompositeAudioClip, ColorClip, ImageClip,
 )
-from moviepy.video.fx import CrossFadeIn, CrossFadeOut, FadeIn, FadeOut, SlideIn
+from moviepy.video.fx import CrossFadeIn, CrossFadeOut, FadeIn, FadeOut, SlideIn, MultiplySpeed
 
 from config import OUTPUT_DIR, OUTPUT_RESOLUTION, \
     TRANSITION_ENABLED, TRANSITION_DURATION, TRANSITION_MIN_SHOT, \
@@ -149,7 +150,8 @@ def _build_segment_clip(footage_path: str, sub_duration: float, target_w: int, t
                         offset_seed: float = 0.0, extend_secs: float = 0.0,
                         allow_kenburns: bool = True, kenburns_on: bool = True,
                         trim_start: float = 0.0, trim_end: float = 0.0,
-                        sub_index: int = 0, filter_name: str = "original"):
+                        sub_index: int = 0, filter_name: str = "original",
+                        speed: float = 1.0):
     """
     Load footage, take a `sub_duration`-long window from it (optionally
     extended by `extend_secs` — used to compensate crossfade overlaps at the
@@ -162,13 +164,17 @@ def _build_segment_clip(footage_path: str, sub_duration: float, target_w: int, t
     pick, and sub-cuts walk forward from trim_start (`sub_index * sub_duration`).
     """
     source = VideoFileClip(footage_path)
-    need = sub_duration + extend_secs
+    # P2.1: at speed != 1.0 the footage window is `sub_duration * speed` long;
+    # MultiplySpeed below restores the final duration. Fast-mo pulls MORE
+    # source footage, slow-mo needs less.
+    speed = max(0.25, min(float(speed or 1.0), 4.0))
+    need = (sub_duration + extend_secs) * speed
 
     if trim_start > 0 or trim_end > 0:
         avail_start = trim_start
         avail_end = max(trim_start + 0.2, source.duration - trim_end)
         avail = avail_end - avail_start
-        start = avail_start + (sub_index * sub_duration)
+        start = avail_start + (sub_index * sub_duration * speed)
         if start + need > avail_end:
             start = max(avail_start, avail_end - need)
         if avail >= need:
@@ -192,6 +198,11 @@ def _build_segment_clip(footage_path: str, sub_duration: float, target_w: int, t
 
     if filter_name and filter_name != "original":
         clip = _apply_filter(clip, filter_name)
+
+    # P2.1: apply play-speed AFTER fit/crop/fx so the final duration lands
+    # exactly on `sub_duration + extend_secs` (timeline sync preserved).
+    if speed != 1.0:
+        clip = clip.with_effects([MultiplySpeed(speed)])
 
     return clip
 
@@ -376,6 +387,31 @@ def _title_clips_for_overlays(overlays, timed_segments, frame_w, frame_h) -> lis
     return clips
 
 
+def _speed_audio_preserve_pitch(path: str, speed: float) -> str | None:
+    """P2.1: resample audio with ffmpeg atempo so pitch stays intact while
+    duration changes with the clip speed. Result is cached next to the source
+    (stem@speedX.wav); returns None on failure (caller falls back to raw)."""
+    try:
+        out = Path(path).with_name(f"{Path(path).stem}@s{speed:.2f}.wav")
+        if out.exists():
+            return str(out)
+        filters, s = [], speed
+        while s > 2.0:
+            filters.append("atempo=2.0")
+            s /= 2.0
+        while s < 0.5:
+            filters.append("atempo=0.5")
+            s *= 2.0
+        filters.append(f"atempo={s:.4f}")
+        cmd = ["ffmpeg", "-y", "-i", str(path), "-filter:a", ",".join(filters),
+               "-vn", "-acodec", "pcm_s16le", str(out)]
+        subprocess.run(cmd, capture_output=True, timeout=180)
+        return str(out) if out.exists() else None
+    except Exception as e:
+        print(f"[stage5] atempo failed ({e}) — raw audio fallback")
+        return None
+
+
 def _sticker_clips_for_overlays(stickers, timed_segments, frame_w, frame_h) -> list:
     """Sticker/gambar overlay manual (P1.4) -> ImageClips pada timeline absolut.
     Setiap sticker: {segment_index, image_path, x, y (0-1 relatif frame,
@@ -551,6 +587,7 @@ def assemble_video(timed_segments: list[dict], footage_map: dict[int, dict],
             continue
 
         sub_durations = _split_segment_by_template_pacing(seg_dur, avg_shot_duration)
+        seg_speed = max(0.25, min(float(seg.get("speed", 1.0) or 1.0), 4.0))
         for i, sub_dur in enumerate(sub_durations):
             layers.append({
                 "clip": None,  # built below (needs fade plan for extension)
@@ -563,6 +600,7 @@ def assemble_video(timed_segments: list[dict], footage_map: dict[int, dict],
                 "trim_end": trim_end,
                 "sub_index": i,
                 "filter_name": seg.get("filter", "original"),  # P1.3
+                "speed": seg_speed,  # P2.1
             })
             cursor += sub_dur
 
@@ -598,6 +636,7 @@ def assemble_video(timed_segments: list[dict], footage_map: dict[int, dict],
             trim_start=L.get("trim_start", 0.0), trim_end=L.get("trim_end", 0.0),
             sub_index=L.get("sub_index", 0),
             filter_name=L.get("filter_name", "original"),
+            speed=L.get("speed", 1.0),
         )
         fade = L["fade_in"]
         tr = L.get("transition", "none")
@@ -665,6 +704,13 @@ def assemble_video(timed_segments: list[dict], footage_map: dict[int, dict],
             a = AudioFileClip(seg_path)
             seg_start = float(seg.get("start", 0.0) or 0.0)
             seg_dur = float(seg.get("duration", 0.0) or 0.0)
+            # P2.1: speed re-syncs the voice with the clip (pitch preserved).
+            seg_speed = max(0.25, min(float(seg.get("speed", 1.0) or 1.0), 4.0))
+            if seg_speed != 1.0:
+                sp = _speed_audio_preserve_pitch(seg_path, seg_speed)
+                if sp:
+                    a.close()
+                    a = AudioFileClip(sp)
             # Voice placed at its timeline window; trim to window length.
             a = a.with_start(seg_start)
             if seg_dur > 0:

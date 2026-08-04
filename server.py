@@ -944,6 +944,7 @@ class TimelineSegment(BaseModel):
     audio_path: str = ""     # Fase 3.0: per-segment narration audio
     words: list[dict] = []   # Fase 3.4: per-word subtitle timing (karaoke)
     filter: str = "original"  # P1.3: color-grade preset per clip
+    speed: float = 1.0          # P2.1: play-speed multiplier (0.25x–4x)
 
 class TitleOverlay(BaseModel):
     """Teks/title manual di atas footage (P1.1) — 9 posisi, pill bg opsional."""
@@ -980,6 +981,8 @@ class TimelineExportRequest(BaseModel):
     caption_style: str = "minimal-white-center"
     transition_style: str = "hard_cut"   # "hard_cut" | "crossfade"
     ken_burns: bool = False
+    # --- P2.2: multi-aspect export ---
+    aspect_ratio: str = "9:16"           # "9:16" | "16:9" | "1:1" | "original"
     # --- Watermark (Fase 5.2): logo overlay ---
     watermark_path: str | None = None
     watermark_pos: str = "bottom-right"
@@ -999,6 +1002,7 @@ class BatchItem(BaseModel):
     caption_style: str = "minimal-white-center"
     transition_style: str = "hard_cut"
     ken_burns: bool = False
+    aspect_ratio: str = "9:16"
     watermark_path: str | None = None
     watermark_pos: str = "bottom-right"
     title_overlays: list[TitleOverlay] = []
@@ -1039,6 +1043,7 @@ def batch_render(req: BatchRenderRequest):
                     caption_style=item.caption_style,
                     transition_style=item.transition_style,
                     ken_burns=item.ken_burns,
+                    resolution=_aspect_resolution(item.aspect_ratio),
                     watermark_path=item.watermark_path, watermark_pos=item.watermark_pos,
                     title_overlays=[o.model_dump() for o in item.title_overlays],
                     sticker_overlays=[o.model_dump() for o in item.sticker_overlays],
@@ -1067,10 +1072,15 @@ def _timeline_to_stage5(segments: list[TimelineSegment]):
         if not seg.video_path or not os.path.exists(seg.video_path):
             continue
         dur = max(float(seg.duration), 0.5)
+        # P2.1: speed shortens/lengthens the timeline window; footage window
+        # stays `dur * speed` (MultiplySpeed restores final duration).
+        speed = max(0.25, min(float(getattr(seg, "speed", 1.0) or 1.0), 4.0))
+        final_dur = dur / speed
         timed.append({
             "text": seg.narration_text or f"Segmen {i + 1}",
             "keywords": list(seg.keywords or []),
-            "start": cursor, "end": cursor + dur, "duration": dur,
+            "start": cursor, "end": cursor + final_dur, "duration": final_dur,
+            "speed": speed,
             "trim_start": float(seg.start_trim or 0.0),
             "trim_end": float(seg.end_trim or 0.0),
             # Fase 3.0: per-segment voice travels with the clip.
@@ -1079,7 +1089,7 @@ def _timeline_to_stage5(segments: list[TimelineSegment]):
             "words": list(seg.words or []),
         })
         footage[len(footage)] = {"video_path": seg.video_path}
-        cursor += dur
+        cursor += final_dur
     return timed, footage
 
 
@@ -1108,13 +1118,30 @@ def _safe_output_name(name: str, fallback: str = "ritme_output") -> str:
     return (s or fallback)[:80]
 
 
-def _preview_resolution() -> tuple[int, int]:
-    """Downscaled even-numbered resolution derived from OUTPUT_RESOLUTION —
-    used by timeline preview so renders stay fast without manual ffmpeg."""
+ASPECT_RESOLUTIONS = {"9:16": (1080, 1920), "16:9": (1920, 1080), "1:1": (1080, 1080)}
+
+
+def _aspect_resolution(aspect: str, scale: float = 1.0) -> tuple[int, int]:
+    """P2.2: resolve '9:16' | '16:9' | '1:1' | 'original' -> (w, h).
+    'original' fallback ke OUTPUT_RESOLUTION config. Optional downscale
+    (preview) dengan hasil selalu even (ffmpeg butuh)."""
     from config import OUTPUT_RESOLUTION
-    tw, th = OUTPUT_RESOLUTION
-    scale = 360.0 / max(tw, th)
-    w = int(round(tw * scale)); h = int(round(th * scale))
+    if aspect == "original":
+        w, h = OUTPUT_RESOLUTION
+    else:
+        w, h = ASPECT_RESOLUTIONS.get(aspect, ASPECT_RESOLUTIONS["9:16"])
+    if scale != 1.0:
+        w = int(round(w * scale)); h = int(round(h * scale))
+        w += w % 2; h += h % 2
+    return (w, h)
+
+
+def _preview_resolution(aspect: str = "9:16") -> tuple[int, int]:
+    """Downscaled even-numbered resolution derived from target aspect —
+    used by timeline preview so renders stay fast without manual ffmpeg."""
+    w, h = _aspect_resolution(aspect)
+    scale = 360.0 / max(w, h)
+    w = int(round(w * scale)); h = int(round(h * scale))
     w += w % 2; h += h % 2
     return (w, h)
 
@@ -1134,6 +1161,7 @@ def timeline_export(req: TimelineExportRequest):
         caption_style=req.caption_style,
         transition_style=req.transition_style,
         ken_burns=req.ken_burns,
+        resolution=_aspect_resolution(req.aspect_ratio),
         watermark_path=req.watermark_path, watermark_pos=req.watermark_pos,
         title_overlays=[o.model_dump() for o in req.title_overlays],
         sticker_overlays=[o.model_dump() for o in req.sticker_overlays],
@@ -1161,7 +1189,7 @@ def timeline_preview(req: TimelineExportRequest):
         caption_style=req.caption_style,
         transition_style=req.transition_style,
         ken_burns=req.ken_burns,
-        resolution=_preview_resolution(),
+        resolution=_preview_resolution(req.aspect_ratio),
         ffmpeg_preset="ultrafast",
         watermark_path=req.watermark_path, watermark_pos=req.watermark_pos,
         title_overlays=[o.model_dump() for o in req.title_overlays],
