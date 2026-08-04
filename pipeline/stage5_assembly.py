@@ -376,6 +376,66 @@ def _title_clips_for_overlays(overlays, timed_segments, frame_w, frame_h) -> lis
     return clips
 
 
+def _sticker_clips_for_overlays(stickers, timed_segments, frame_w, frame_h) -> list:
+    """Sticker/gambar overlay manual (P1.4) -> ImageClips pada timeline absolut.
+    Setiap sticker: {segment_index, image_path, x, y (0-1 relatif frame,
+    0.5 = tengah), scale (1.0 = 15% lebar frame), rotation (derajat),
+    start_offset, duration}."""
+    if not stickers:
+        return []
+    clips = []
+    import numpy as _np
+    from PIL import Image as PILImage
+    seg_by_idx = {}
+    for i, s in enumerate(timed_segments):
+        idx = s.get("index", i)
+        seg_by_idx[int(idx)] = s
+    for st in stickers:
+        try:
+            path = str(st.get("image_path", "") or "")
+            if not path or not Path(path).exists():
+                continue
+            seg = seg_by_idx.get(int(st.get("segment_index", 0)) or 0)
+            if seg is None:
+                seg = timed_segments[0] if timed_segments else None
+            if seg is None:
+                continue
+            img = PILImage.open(path)
+            if img.mode != "RGBA":
+                img = img.convert("RGBA")
+            rot = float(st.get("rotation", 0.0) or 0.0)
+            if rot:
+                img = img.rotate(rot, expand=True, resample=PILImage.BICUBIC)
+            sw, sh = img.size
+            base_w = int(frame_w * 0.15)
+            scale = float(st.get("scale", 1.0) or 1.0)
+            w = max(int(base_w * scale), 8)
+            h = max(int(sh * w / sw), 8)
+            clip = ImageClip(_np.array(img)).resized((w, h))
+            # posisi dari CENTER sticker (rotasi gak bikin loncat)
+            x = float(st.get("x", 0.5) or 0.5)
+            y = float(st.get("y", 0.5) or 0.5)
+            cx = x * frame_w - w / 2.0
+            cy = y * frame_h - h / 2.0
+            clip = clip.with_position((cx, cy))
+            seg_start = float(seg.get("start", 0.0) or 0.0)
+            seg_dur = float(seg.get("duration", 0.0) or 0.0)
+            if seg_dur <= 0:
+                seg_end = float(seg.get("end", 0.0) or seg_start + 2.0)
+                seg_dur = max(seg_end - seg_start, 0.1)
+            off = float(st.get("start_offset", 0.0) or 0.0)
+            dur = float(st.get("duration", 0.0) or 0.0)
+            if dur <= 0:
+                dur = seg_dur - off
+            dur = min(dur, max(seg_dur - off, 0.1))
+            clips.append(
+                clip.with_duration(max(dur, 0.1)).with_start(seg_start + off)
+            )
+        except Exception as e:
+            print(f"[stage5] Sticker overlay skipped ({e})")
+    return clips
+
+
 # ---------------------------------------------------------------------------
 # Assembly
 # ---------------------------------------------------------------------------
@@ -403,7 +463,8 @@ def assemble_video(timed_segments: list[dict], footage_map: dict[int, dict],
                     segment_audio_paths: list[str] | None = None,
                     watermark_path: str | None = None,
                     watermark_pos: str = "bottom-right",
-                    title_overlays: list[dict] | None = None) -> str:
+                    title_overlays: list[dict] | None = None,
+                    sticker_overlays: list[dict] | None = None) -> str:
     """
     timed_segments: output of Stage 3 (align_keywords_to_timestamps)
     footage_map: {segment_index: {"video_path": ..., ...}} from Stage 4
@@ -677,7 +738,12 @@ def assemble_video(timed_segments: list[dict], footage_map: dict[int, dict],
         except Exception as e:
             print(f"[stage5] Watermark skipped ({e})")
 
-    final = CompositeVideoClip([full_video, *watermark_layers, *caption_layers, *_title_clips_for_overlays(title_overlays, timed_segments, target_w, target_h)], size=(target_w, target_h))
+    final = CompositeVideoClip(
+        [full_video, *watermark_layers, *caption_layers,
+         *_title_clips_for_overlays(title_overlays, timed_segments, target_w, target_h),
+         *_sticker_clips_for_overlays(sticker_overlays, timed_segments, target_w, target_h)],
+        size=(target_w, target_h),
+    )
 
     if on_progress:
         on_progress(20, "Rendering (ffmpeg encode)…")

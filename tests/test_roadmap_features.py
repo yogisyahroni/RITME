@@ -1100,6 +1100,70 @@ def test_transition_p12():
           f"R{fr_zoom[...,0].mean():.0f} B{fr_zoom[...,2].mean():.0f}")
 
 
+def test_sticker_p14():
+    """P1.4 sticker overlay — helper render + upload + preview + piksel kuning tampil."""
+    import numpy as np
+    import pipeline.stage5_assembly as s5
+    from PIL import Image
+    from moviepy import VideoFileClip
+    import server as server_mod
+    from fastapi.testclient import TestClient
+
+    # bikin PNG sticker solid kuning transparan-di-tepi
+    st_path = Path("cache") / "test" / "sticker.png"
+    st_path.parent.mkdir(parents=True, exist_ok=True)
+    img = Image.new("RGBA", (100, 100), (0, 0, 0, 0))
+    for px in range(10, 90):
+        for py in range(10, 90):
+            img.putpixel((px, py), (255, 212, 0, 255))
+    img.save(st_path)
+
+    segs, _ = make_timed_segments()
+    stickers = [{
+        "segment_index": 0, "image_path": str(st_path),
+        "x": 0.5, "y": 0.5, "scale": 1.0, "rotation": 0.0,
+        "start_offset": 0.0, "duration": 1.5,
+    }]
+    clips = s5._sticker_clips_for_overlays(stickers, segs, 360, 640)
+    check("sticker -> 1 clip", len(clips) == 1, f"got {len(clips)}")
+    check("start aligned ke segmen", abs(clips[0].start - segs[0]["start"]) < 1e-6,
+          f"{clips[0].start} vs {segs[0]['start']}")
+    check("durasi di-clamp ke segmen", clips[0].duration <= segs[0]["duration"] + 0.05,
+          f"{clips[0].duration}")
+    check("none stickers -> []", s5._sticker_clips_for_overlays(None, segs, 360, 640) == [])
+    check("path kosong di-skip", s5._sticker_clips_for_overlays(
+        [{"segment_index": 0, "image_path": ""}], segs, 360, 640) == [])
+
+    # upload endpoint
+    with TestClient(server_mod.app) as client:
+        with open(st_path, "rb") as f:
+            r = client.post("/api/sticker/upload", files={"image": ("st.png", f, "image/png")})
+        check("upload 200 + path", r.status_code == 200 and r.json().get("sticker_path"),
+              f"got {r.status_code}: {r.text[:120]}")
+        up_path = r.json()["sticker_path"]
+
+        # preview render dengan sticker -> frame tengah harus ada piksel kuning
+        clip = make_test_video(Path("cache") / "test" / "st_base.mp4", "black", 3.0, size="360x640")
+        body = {
+            "segments": [{"index": 0, "video_path": str(clip), "narration_text": "T",
+                          "duration": 3.0, "start_trim": 0, "end_trim": 0}],
+            "narration_audio_path": "",
+            "output_name": "sticker_preview",
+            "sticker_overlays": [{"segment_index": 0, "image_path": up_path,
+                                  "x": 0.5, "y": 0.5, "scale": 1.0, "rotation": 0.0,
+                                  "start_offset": 0.0, "duration": 1.5}],
+        }
+        r2 = client.post("/api/timeline/preview", json=body)
+        check("preview sticker 200", r2.status_code == 200, f"got {r2.status_code}: {r2.text[:120]}")
+        if r2.status_code == 200:
+            tmp = Path("cache") / "test" / "st_out.mp4"
+            tmp.write_bytes(r2.content)
+            with VideoFileClip(str(tmp)) as vc:
+                fr = vc.get_frame(0.8)
+            yellow = ((fr[..., 0] > 180) & (fr[..., 1] > 140) & (fr[..., 2] < 120)).sum()
+            check("piksel kuning sticker tampil", yellow > 100, f"got {yellow}")
+
+
 def main():
     which = set(sys.argv[1:])
     run_all = "--all" in which or len(which) == 0
@@ -1124,6 +1188,7 @@ def main():
         ("title_overlay_p11", test_title_overlay_p11),
         ("filter_p13", test_filter_p13),
         ("transition_p12", test_transition_p12),
+        ("sticker_p14", test_sticker_p14),
     ]
     if run_all or "--with-server" in which:
         tests.append(("server_render", test_server_render_endpoint))

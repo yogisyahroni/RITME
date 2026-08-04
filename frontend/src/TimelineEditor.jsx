@@ -112,6 +112,14 @@ function TimelineEditor({ narration, footageData, picks }) {
   const [saveMsg, setSaveMsg] = useState("");
   // P1.1: text/title overlay manual per segmen
   const [titleOverlays, setTitleOverlays] = useState([]);
+  // P1.4: sticker/gambar overlay manual per segmen
+  const [stickerOverlays, setStickerOverlays] = useState([]);
+
+  const STICKER_POSITIONS = [
+    ["0.15,0.2", "Atas Kiri"], ["0.5,0.15", "Atas Tengah"], ["0.85,0.2", "Atas Kanan"],
+    ["0.15,0.5", "Tengah Kiri"], ["0.5,0.5", "Tengah"], ["0.85,0.5", "Tengah Kanan"],
+    ["0.15,0.85", "Bawah Kiri"], ["0.5,0.85", "Bawah Tengah"], ["0.85,0.85", "Bawah Kanan"],
+  ];
 
   const TITLE_POSITIONS = [
     ["top-left", "Atas Kiri"], ["top-center", "Atas Tengah"], ["top-right", "Atas Kanan"],
@@ -136,7 +144,8 @@ function TimelineEditor({ narration, footageData, picks }) {
       if (proj?.segments?.length) {
         setSegments(proj.segments);
         setFinishing(f => ({ ...f, ...(proj.finishing || {}) }));
-        setTitleOverlays(proj.title_overlays || []);
+        setTitleOverlays(proj.title_overlays || proj.titleOverlays || []);
+        setStickerOverlays(proj.sticker_overlays || proj.stickerOverlays || []);
         setRestoreNotice(true);
         restoredRef.current = true;
       }
@@ -168,11 +177,11 @@ function TimelineEditor({ narration, footageData, picks }) {
     if (!segments.length) return;
     const t = setTimeout(() => {
       try {
-        localStorage.setItem(AUDIO_KEY, JSON.stringify({ segments, finishing, titleOverlays, savedAt: Date.now() }));
+        localStorage.setItem(AUDIO_KEY, JSON.stringify({ segments, finishing, titleOverlays, stickerOverlays, savedAt: Date.now() }));
       } catch { /* quota — abaikan */ }
     }, 800);
     return () => clearTimeout(t);
-  }, [segments, finishing, titleOverlays]);
+  }, [segments, finishing, titleOverlays, stickerOverlays]);
 
   // Keyboard shortcuts: Ctrl+Z/Y undo-redo, Delete hapus, S split, Space play/pause
   useEffect(() => {
@@ -329,7 +338,7 @@ function TimelineEditor({ narration, footageData, picks }) {
   // Fase 4: Save/Load project + SRT + audio preview per segmen
   const exportProject = () => {
     const data = {
-      segments, finishing, titleOverlays, savedAt: Date.now(),
+      segments, finishing, titleOverlays, stickerOverlays, savedAt: Date.now(),
       narrationMeta: { template_name: narration?.template_name || "" },
     };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
@@ -348,7 +357,8 @@ function TimelineEditor({ narration, footageData, picks }) {
         pushHistory();
         setSegments(data.segments);
         setFinishing(f => ({ ...f, ...(data.finishing || {}) }));
-        setTitleOverlays(data.title_overlays || []);
+        setTitleOverlays(data.title_overlays || data.titleOverlays || []);
+        setStickerOverlays(data.sticker_overlays || data.stickerOverlays || []);
         setRestoreNotice(false);
         setError(null);
       } catch { setError("File project tidak valid (bukan .ritme.json)"); }
@@ -409,6 +419,7 @@ function TimelineEditor({ narration, footageData, picks }) {
         template_name: narration?.template_name || "",
         watermark_path: finishing.watermark_path || null,
         title_overlays: titleOverlays,
+        sticker_overlays: stickerOverlays,
       };
       const res = await fetch("/api/projects", {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
@@ -435,6 +446,36 @@ function TimelineEditor({ narration, footageData, picks }) {
   };
   const removeOverlay = (id) => {
     setTitleOverlays(prev => prev.filter(o => o.id !== id));
+  };
+
+  // P1.4: sticker overlay manual — upload + CRUD
+  const addSticker = (i) => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/png,image/jpeg,image/webp";
+    input.onchange = async (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+      const fd = new FormData();
+      fd.append("image", file);
+      try {
+        const res = await fetch("/api/sticker/upload", { method: "POST", body: fd });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const { sticker_path } = await res.json();
+        setStickerOverlays(prev => [...prev, {
+          id: `st-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          segment_index: i, image_path: sticker_path, image_name: file.name,
+          x: 0.5, y: 0.5, scale: 1.0, rotation: 0.0, start_offset: 0, duration: 3,
+        }]);
+      } catch (err) { setError(`Gagal upload sticker: ${err}`); }
+    };
+    input.click();
+  };
+  const updateSticker = (id, patch) => {
+    setStickerOverlays(prev => prev.map(o => o.id === id ? { ...o, ...patch } : o));
+  };
+  const removeSticker = (id) => {
+    setStickerOverlays(prev => prev.filter(o => o.id !== id));
   };
 
   const exportTimeline = async (preview = false) => {
@@ -469,6 +510,11 @@ function TimelineEditor({ narration, footageData, picks }) {
           segment_index: o.segment_index, text: o.text, start_offset: o.start_offset,
           duration: o.duration, position: o.position, font_size: o.font_size,
           color: o.color, background_pill: o.background_pill,
+        })),
+        sticker_overlays: stickerOverlays.map(o => ({
+          segment_index: o.segment_index, image_path: o.image_path, x: o.x, y: o.y,
+          scale: o.scale, rotation: o.rotation, start_offset: o.start_offset,
+          duration: o.duration,
         })),
       };
       const resp = await fetch(endpoint, {
@@ -719,6 +765,24 @@ function TimelineEditor({ narration, footageData, picks }) {
             {titleOverlays.length === 0 && <span style={{ fontFamily: F.body, fontSize: 9.5, color: C.paperFaint, position: "absolute", top: 7, left: 10 }}>Teks manual (judul, lower-third) — klik "+ TEKS" di detail segmen</span>}
           </div>
         </div>
+
+        {/* Track STICKER (P1.4) */}
+        <div>
+          <span style={{ fontFamily: F.mono, fontSize: 10, color: C.paperFaint, letterSpacing: "0.08em" }}>STICKER</span>
+          <div className="relative rounded" style={{ height: 30, width: timelineW, background: C.panelRaised, border: `1px solid ${C.borderSoft}`, borderRadius: 4 }}>
+            {stickerOverlays.map(o => {
+              const left = (segStarts[o.segment_index] || 0) + (o.start_offset || 0);
+              return (
+                <div key={o.id} className="absolute rounded flex items-center px-1.5" title={`Sticker: ${o.image_name || ""}`}
+                  onClick={() => setSelectedIdx(o.segment_index)}
+                  style={{ left: left * pxPerSec, width: Math.max((o.duration || 3) * pxPerSec - 3, 40), top: 5, height: 20, background: `${C.caption}26`, border: `1px solid ${C.caption}55`, overflow: "hidden", cursor: "pointer" }}>
+                  <span style={{ fontFamily: F.mono, fontSize: 8.5, color: C.caption, whiteSpace: "nowrap" }}>◈ {String(o.image_name || "sticker").slice(0, 8)}</span>
+                </div>
+              );
+            })}
+            {stickerOverlays.length === 0 && <span style={{ fontFamily: F.body, fontSize: 9.5, color: C.paperFaint, position: "absolute", top: 7, left: 10 }}>Sticker/gambar overlay — klik "+ STICKER" di detail segmen</span>}
+          </div>
+        </div>
       </div>
 
       {/* ===== Detail panel per segmen (list) ===== */}
@@ -829,6 +893,65 @@ function TimelineEditor({ narration, footageData, picks }) {
                       <label className="flex items-center gap-1.5" style={{ fontFamily: F.mono, fontSize: 9.5, color: C.paperDim, cursor: "pointer" }}>
                         <input type="checkbox" checked={o.background_pill} onChange={e => updateOverlay(o.id, { background_pill: e.target.checked })} style={{ accentColor: C.amber }} />
                         Pill bg
+                      </label>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {/* P1.4: editor sticker overlay per segmen */}
+            {selectedIdx === i && (
+              <div className="flex flex-col gap-2 px-4 py-3 rounded" style={{ background: C.panelRaised, border: `1px dashed ${C.border}` }}>
+                <div className="flex items-center justify-between">
+                  <span style={{ fontFamily: F.mono, fontSize: 10, color: C.caption, letterSpacing: "0.08em" }}>STICKER / GAMBAR OVERLAY</span>
+                  <button onClick={() => addSticker(i)} className="flex items-center gap-1 px-2.5 py-1 rounded"
+                    style={{ background: "rgba(127,184,138,0.12)", border: `1px solid ${C.caption}66`, color: C.caption, fontFamily: F.mono, fontSize: 10, cursor: "pointer" }}>
+                    + STICKER
+                  </button>
+                </div>
+                {stickerOverlays.filter(o => o.segment_index === i).length === 0 && (
+                  <span style={{ fontFamily: F.body, fontSize: 11, color: C.paperFaint }}>Belum ada sticker di segmen ini — klik "+ STICKER" untuk upload gambar (PNG transparan paling bagus).</span>
+                )}
+                {stickerOverlays.filter(o => o.segment_index === i).map(o => (
+                  <div key={o.id} className="flex flex-col gap-2 rounded p-2.5" style={{ background: C.panel, border: `1px solid ${C.borderSoft}` }}>
+                    <div className="flex items-center gap-2">
+                      {o.image_path ? (
+                        <img src={`/uploads/${o.image_path.split(/[\\/]/).pop()}`} alt=""
+                          onError={e => { e.target.style.display = "none"; }}
+                          style={{ width: 36, height: 36, objectFit: "contain", background: C.panelRaised, borderRadius: 3, flexShrink: 0 }} />
+                      ) : <span style={{ width: 36, height: 36, background: C.panelRaised, borderRadius: 3, flexShrink: 0 }} />}
+                      <span style={{ flex: 1, minWidth: 0, fontFamily: F.body, fontSize: 11.5, color: C.paper, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{o.image_name || "sticker"}</span>
+                      <IconButton onClick={() => removeSticker(o.id)} icon={Trash2} title="Hapus sticker" color={C.red} />
+                    </div>
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                      <label className="flex items-center gap-1.5" style={{ fontFamily: F.mono, fontSize: 9.5, color: C.paperDim }}>
+                        Posisi
+                        <select value={`${o.x},${o.y}`} onChange={e => { const [x, y] = e.target.value.split(","); updateSticker(o.id, { x: parseFloat(x), y: parseFloat(y) }); }}
+                          style={{ fontFamily: F.mono, fontSize: 10, color: C.paper, background: C.panelRaised, border: `1px solid ${C.borderSoft}`, borderRadius: 3, padding: "2px 5px", outline: "none" }}>
+                          {STICKER_POSITIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                        </select>
+                      </label>
+                      <label className="flex items-center gap-1.5" style={{ fontFamily: F.mono, fontSize: 9.5, color: C.paperDim }}>
+                        Ukuran
+                        <input type="range" min={0.3} max={3} step={0.1} value={o.scale} onChange={e => updateSticker(o.id, { scale: parseFloat(e.target.value) })}
+                          style={{ width: 80, accentColor: C.caption }} />
+                        <span style={{ fontFamily: F.mono, fontSize: 9.5, color: C.paperDim, width: 26 }}>{o.scale.toFixed(1)}x</span>
+                      </label>
+                      <label className="flex items-center gap-1.5" style={{ fontFamily: F.mono, fontSize: 9.5, color: C.paperDim }}>
+                        Rotasi
+                        <input type="range" min={-180} max={180} step={5} value={o.rotation} onChange={e => updateSticker(o.id, { rotation: parseInt(e.target.value) })}
+                          style={{ width: 80, accentColor: C.caption }} />
+                        <span style={{ fontFamily: F.mono, fontSize: 9.5, color: C.paperDim, width: 30 }}>{o.rotation}°</span>
+                      </label>
+                      <label className="flex items-center gap-1.5" style={{ fontFamily: F.mono, fontSize: 9.5, color: C.paperDim }}>
+                        Mulai
+                        <input type="number" min={0} max={Math.max(s.duration - 0.5, 0)} step={0.5} value={o.start_offset} onChange={e => updateSticker(o.id, { start_offset: parseFloat(e.target.value) || 0 })}
+                          style={{ width: 52, fontFamily: F.mono, fontSize: 10, color: C.paper, background: C.panelRaised, border: `1px solid ${C.borderSoft}`, borderRadius: 3, padding: "2px 5px", outline: "none", textAlign: "center" }} />s
+                      </label>
+                      <label className="flex items-center gap-1.5" style={{ fontFamily: F.mono, fontSize: 9.5, color: C.paperDim }}>
+                        Durasi
+                        <input type="number" min={0.5} max={60} step={0.5} value={o.duration} onChange={e => updateSticker(o.id, { duration: parseFloat(e.target.value) || 3 })}
+                          style={{ width: 52, fontFamily: F.mono, fontSize: 10, color: C.paper, background: C.panelRaised, border: `1px solid ${C.borderSoft}`, borderRadius: 3, padding: "2px 5px", outline: "none", textAlign: "center" }} />s
                       </label>
                     </div>
                   </div>
