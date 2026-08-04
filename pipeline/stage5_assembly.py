@@ -549,6 +549,10 @@ def assemble_video(timed_segments: list[dict], footage_map: dict[int, dict],
                     music_path: str | None = None,
                     add_music: bool | None = None,
                     music_mood: str | None = None,
+                    bgm_volume: float = 1.0,          # P4: 0–2x post-duck
+                    bgm_fade_in: float = 2.0,         # P4: fade in secs
+                    bgm_fade_out: float = 2.0,        # P4: fade out secs
+                    bgm_custom_path: str | None = None, # P4: uploaded file
                     caption_style: str | dict | None = None,
                     transition_style: str | None = None,
                     ken_burns: bool | None = None,
@@ -789,12 +793,15 @@ def assemble_video(timed_segments: list[dict], footage_map: dict[int, dict],
     if narration_audio is not None:
         full_video = full_video.with_audio(narration_audio)
 
-    # ---- Background music + auto-ducking (Fase 1.2) -----------------------
+    # ---- Background music + auto-ducking (Fase 1.2 + P4 user control) ----
     if music_on:
         try:
             from pipeline import stage_music
 
-            chosen = Path(music_path) if music_path else None
+            # P4: custom uploaded BGM takes priority
+            chosen = Path(bgm_custom_path) if bgm_custom_path and Path(bgm_custom_path).exists() else None
+            if chosen is None:
+                chosen = Path(music_path) if music_path else None
             if chosen is None:
                 if music_mood:
                     chosen = stage_music.pick_music_by_mood(music_mood)
@@ -804,13 +811,14 @@ def assemble_video(timed_segments: list[dict], footage_map: dict[int, dict],
                 windows = [(float(s.get("start", 0.0)), float(s.get("end", 0.0))) for s in timed_segments]
                 ducked = stage_music.build_ducked_music(
                     chosen, windows, full_video.duration, narration_audio_path,
+                    volume=bgm_volume, fade_in=bgm_fade_in, fade_out=bgm_fade_out,
                 )
                 if ducked:
                     music_clip = AudioFileClip(str(ducked))
                     full_video = full_video.with_audio(
                         CompositeAudioClip([narration_audio, music_clip])
                     )
-                    print(f"[stage5] Background music: {chosen.name}")
+                    print(f"[stage5] Background music: {chosen.name} (vol={bgm_volume})")
             else:
                 if music_path:
                     print(f"[stage5] Music file not found: {music_path} — continuing without music.")

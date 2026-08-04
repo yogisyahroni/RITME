@@ -74,6 +74,11 @@ function TimelineEditor({ narration, footageData, picks }) {
   const [finishing, setFinishing] = useState({
     add_music: false,
     music_mood: "calm",
+    bgm_volume: 1.0,
+    bgm_fade_in: 2.0,
+    bgm_fade_out: 2.0,
+    bgm_custom_path: "",
+    bgm_custom_name: "",
     caption_style: "minimal-white-center",
     transition_style: "hard_cut",
     ken_burns: false,
@@ -526,6 +531,10 @@ function TimelineEditor({ narration, footageData, picks }) {
         template_name: narration?.template_name || "",
         add_music: finishing.add_music,
         music_mood: finishing.add_music ? finishing.music_mood : null,
+        bgm_volume: finishing.bgm_volume,
+        bgm_fade_in: finishing.bgm_fade_in,
+        bgm_fade_out: finishing.bgm_fade_out,
+        bgm_custom_path: finishing.bgm_custom_path || null,
         caption_style: finishing.caption_style,
         transition_style: finishing.transition_style,
         ken_burns: finishing.ken_burns,
@@ -807,7 +816,7 @@ function TimelineEditor({ narration, footageData, picks }) {
           </div>
         </div>
 
-        {/* Track MUSIK (3.3 swap musik) */}
+        {/* Track MUSIK (3.3 swap musik + P4 volume/fade/upload) */}
         <div>
           <span style={{ fontFamily: F.mono, fontSize: 10, color: C.paperFaint, letterSpacing: "0.08em" }}>MUSIK</span>
           <div className="flex items-center gap-3 rounded" style={{ height: 40, width: timelineW, background: C.panelRaised, border: `1px solid ${C.borderSoft}`, borderRadius: 4, padding: "0 10px" }}>
@@ -825,6 +834,58 @@ function TimelineEditor({ narration, footageData, picks }) {
               {["calm", "tense", "sad", "epic", "upbeat"].map(m => <option key={m} value={m}>{m}</option>)}
             </select>
           </div>
+          {/* P4: expanded controls when music is ON */}
+          {finishing.add_music && (
+            <div className="flex items-center gap-4 flex-wrap rounded mt-1 px-3 py-2" style={{ background: C.panel, border: `1px solid ${C.borderSoft}` }}>
+              {/* Volume */}
+              <label className="flex items-center gap-1.5" style={{ fontFamily: F.mono, fontSize: 9.5, color: C.paperDim }}>
+                VOL
+                <input type="range" min={0} max={2} step={0.05} value={finishing.bgm_volume}
+                  onChange={e => { pushHistory(); setFinishing({ ...finishing, bgm_volume: parseFloat(e.target.value) }); }}
+                  style={{ width: 80, accentColor: C.music }} />
+                <span style={{ fontFamily: F.mono, fontSize: 9, color: C.paper, width: 32, textAlign: "center" }}>{Math.round(finishing.bgm_volume * 100)}%</span>
+              </label>
+              {/* Fade in */}
+              <label className="flex items-center gap-1.5" style={{ fontFamily: F.mono, fontSize: 9.5, color: C.paperDim }}>
+                FADE IN
+                <input type="number" min={0} max={10} step={0.5} value={finishing.bgm_fade_in}
+                  onChange={e => { pushHistory(); setFinishing({ ...finishing, bgm_fade_in: parseFloat(e.target.value) || 0 }); }}
+                  style={{ width: 44, fontFamily: F.mono, fontSize: 10, color: C.paper, background: C.panelRaised, border: `1px solid ${C.borderSoft}`, borderRadius: 3, padding: "2px 4px", outline: "none", textAlign: "center" }} />s
+              </label>
+              {/* Fade out */}
+              <label className="flex items-center gap-1.5" style={{ fontFamily: F.mono, fontSize: 9.5, color: C.paperDim }}>
+                FADE OUT
+                <input type="number" min={0} max={10} step={0.5} value={finishing.bgm_fade_out}
+                  onChange={e => { pushHistory(); setFinishing({ ...finishing, bgm_fade_out: parseFloat(e.target.value) || 0 }); }}
+                  style={{ width: 44, fontFamily: F.mono, fontSize: 10, color: C.paper, background: C.panelRaised, border: `1px solid ${C.borderSoft}`, borderRadius: 3, padding: "2px 4px", outline: "none", textAlign: "center" }} />s
+              </label>
+              {/* Upload custom BGM */}
+              <label className="flex items-center gap-1.5 cursor-pointer px-2 py-0.5 rounded"
+                style={{ fontFamily: F.mono, fontSize: 9, color: C.paperDim, background: `${C.music}1a`, border: `1px solid ${C.music}44`, cursor: "pointer" }}>
+                <Upload size={10} />
+                {finishing.bgm_custom_name || "Upload BGM"}
+                <input type="file" accept=".mp3,.wav,.m4a,.ogg,.flac" style={{ display: "none" }}
+                  onChange={async e => {
+                    const f = e.target.files?.[0];
+                    if (!f) return;
+                    const fd = new FormData();
+                    fd.append("audio", f);
+                    const r = await fetch("/api/bgm/upload", { method: "POST", body: fd });
+                    if (r.ok) {
+                      const d = await r.json();
+                      pushHistory();
+                      setFinishing({ ...finishing, bgm_custom_path: d.bgm_path, bgm_custom_name: f.name, add_music: true });
+                    }
+                  }} />
+              </label>
+              {finishing.bgm_custom_name && (
+                <button onClick={() => { pushHistory(); setFinishing({ ...finishing, bgm_custom_path: "", bgm_custom_name: "" }); }}
+                  style={{ fontFamily: F.mono, fontSize: 9, color: C.red, background: "none", border: `1px solid ${C.red}44`, borderRadius: 3, padding: "1px 6px", cursor: "pointer" }}>
+                  Hapus custom
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Track CAPTION */}

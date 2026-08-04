@@ -125,7 +125,13 @@ def _narration_rms(narration_audio_path: str) -> float:
 
 def build_ducked_music(music_path: Path, narration_windows: list[tuple[float, float]],
                        total_duration: float, narration_audio_path: str | None = None,
-                       out_path: Path | None = None) -> Path | None:
+                       out_path: Path | None = None,
+                       volume: float = 1.0,             # P4: user volume multiplier
+                       fade_in: float | None = None,    # P4: override fade in (None=config default)
+                       fade_out: float | None = None,   # P4: override fade out
+                       trim_start: float = 0.0,         # P4: trim start seconds
+                       trim_end: float = 0.0,           # P4: trim end (0=full length)
+                       ) -> Path | None:
     """
     Build a full-length, ducked, faded, level-matched music track.
 
@@ -150,6 +156,15 @@ def build_ducked_music(music_path: Path, narration_windows: list[tuple[float, fl
 
     if total_duration <= 0:
         return None
+
+    # P4: trim BGM before loop
+    if trim_start > 0 or trim_end > 0:
+        t0 = int(trim_start * 1000)
+        t1 = int(trim_end * 1000) if trim_end > 0 else len(song)
+        t1 = max(t1, t0 + 100)  # at least 100ms
+        song = song[t0:t1]
+        if len(song) == 0:
+            return None
 
     # Loop (or trim) the song to the video length.
     target_ms = int(total_duration * 1000)
@@ -191,9 +206,11 @@ def build_ducked_music(music_path: Path, narration_windows: list[tuple[float, fl
         ramp_out = 0.5 * (1 - np.cos(np.pi * np.arange(r0) / r0)) if r0 > 0 else np.array([])
         gain[i1 - r0:i1] = duck + (1.0 - duck) * ramp_out
 
-    # ---- Fade in/out ----
-    fade_in_n = min(int(MUSIC_FADE_IN * sr), n)
-    fade_out_n = min(int(MUSIC_FADE_OUT * sr), n)
+    # ---- Fade in/out (P4: user override) ----
+    fi = fade_in if fade_in is not None else MUSIC_FADE_IN
+    fo = fade_out if fade_out is not None else MUSIC_FADE_OUT
+    fade_in_n = min(int(fi * sr), n)
+    fade_out_n = min(int(fo * sr), n)
     if fade_in_n > 0:
         gain[:fade_in_n] *= np.linspace(0, 1, fade_in_n)
     if fade_out_n > 0:
@@ -213,6 +230,12 @@ def build_ducked_music(music_path: Path, narration_windows: list[tuple[float, fl
         scale = min(scale, 4.0)  # cap gain so quiet music doesn't blow up
         left *= scale
         right *= scale
+
+    # P4: user volume multiplier (post-ducking + post-normalization)
+    if abs(volume - 1.0) > 1e-6:
+        vol = max(0.0, min(volume, 2.0))
+        left *= vol
+        right *= vol
 
     # Clip to int16 range
     def _to_int16(arr):

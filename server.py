@@ -48,7 +48,7 @@ from pydantic import BaseModel
 import json
 import os
 
-from config import TEMPLATES_DIR, OUTPUT_DIR, CACHE_DIR
+from config import TEMPLATES_DIR, OUTPUT_DIR, CACHE_DIR, MUSIC_DIR
 from job_manager import job_manager
 
 
@@ -836,6 +836,10 @@ def render_video(req: RenderRequest):
             req.timed_segments, footage_map_int, req.narration_audio_path, template,
             output_name=req.output_name, on_progress=on_progress,
             music_path=req.music_path,
+            add_music=req.add_music, music_mood=req.music_mood,
+            bgm_volume=req.bgm_volume, bgm_fade_in=req.bgm_fade_in,
+            bgm_fade_out=req.bgm_fade_out,
+            bgm_custom_path=req.bgm_custom_path,
         )
         return {"output_path": out_path, "output_url": f"/outputs/render/{Path(out_path).name}"}
 
@@ -856,6 +860,9 @@ class ExportRequest(BaseModel):
     add_music: bool = False
     music_mood: str | None = None
     music_path: str | None = None   # explicit; else resolved from mood
+    bgm_volume: float = 1.0            # P4
+    bgm_fade_in: float = 2.0           # P4
+    bgm_fade_out: float = 2.0          # P4
     caption_style: str = "minimal-white-center"
     transition_style: str = "hard_cut"
     ken_burns: bool = False
@@ -980,6 +987,10 @@ class TimelineExportRequest(BaseModel):
     # --- Finishing options (Fase 1C.1): manual user choices, defaults OFF ---
     add_music: bool = False
     music_mood: str | None = None
+    bgm_volume: float = 1.0            # P4: 0.0–2.0 multiplier post-ducking
+    bgm_fade_in: float = 2.0           # P4: fade in seconds
+    bgm_fade_out: float = 2.0          # P4: fade out seconds
+    bgm_custom_path: str | None = None # P4: uploaded custom BGM path
     caption_style: str = "minimal-white-center"
     transition_style: str = "hard_cut"   # "hard_cut" | "crossfade"
     ken_burns: bool = False
@@ -1001,6 +1012,10 @@ class BatchItem(BaseModel):
     template_name: str = ""
     add_music: bool = False
     music_mood: str | None = None
+    bgm_volume: float = 1.0            # P4
+    bgm_fade_in: float = 2.0           # P4
+    bgm_fade_out: float = 2.0          # P4
+    bgm_custom_path: str | None = None # P4
     caption_style: str = "minimal-white-center"
     transition_style: str = "hard_cut"
     ken_burns: bool = False
@@ -1042,6 +1057,8 @@ def batch_render(req: BatchRenderRequest):
                     timed, footage, item.narration_audio_path, template,
                     output_name=_safe_output_name(item.name),
                     add_music=item.add_music, music_mood=item.music_mood,
+                    bgm_volume=item.bgm_volume, bgm_fade_in=item.bgm_fade_in,
+                    bgm_fade_out=item.bgm_fade_out, bgm_custom_path=item.bgm_custom_path,
                     caption_style=item.caption_style,
                     transition_style=item.transition_style,
                     ken_burns=item.ken_burns,
@@ -1160,6 +1177,8 @@ def timeline_export(req: TimelineExportRequest):
         timed, footage, req.narration_audio_path, template,
         output_name=req.output_name,
         add_music=req.add_music, music_mood=req.music_mood,
+        bgm_volume=req.bgm_volume, bgm_fade_in=req.bgm_fade_in,
+        bgm_fade_out=req.bgm_fade_out, bgm_custom_path=req.bgm_custom_path,
         caption_style=req.caption_style,
         transition_style=req.transition_style,
         ken_burns=req.ken_burns,
@@ -1188,6 +1207,8 @@ def timeline_preview(req: TimelineExportRequest):
         timed, footage, req.narration_audio_path, template,
         output_name=f"{req.output_name}_preview",
         add_music=req.add_music, music_mood=req.music_mood,
+        bgm_volume=req.bgm_volume, bgm_fade_in=req.bgm_fade_in,
+        bgm_fade_out=req.bgm_fade_out,
         caption_style=req.caption_style,
         transition_style=req.transition_style,
         ken_burns=req.ken_burns,
@@ -1220,6 +1241,38 @@ async def sticker_upload(image: UploadFile = File(...)):
     with open(dest, "wb") as f:
         shutil.copyfileobj(image.file, f)
     return {"sticker_path": str(dest), "name": image.filename}
+
+
+# ============================================================
+# P4: Background Music — upload, list, preview
+# ============================================================
+BGM_UPLOAD_DIR = UPLOADS_DIR / "bgm"
+
+@app.post("/api/bgm/upload")
+async def bgm_upload(audio: UploadFile = File(...)):
+    """P4: upload custom BGM (mp3/wav/m4a/ogg/flac) -> path untuk dipakai render."""
+    _validate_upload(audio, ALLOWED_AUDIO_TYPES)
+    BGM_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    ext = Path(audio.filename).suffix.lower() or ".mp3"
+    dest = BGM_UPLOAD_DIR / f"bgm_{uuid.uuid4().hex[:8]}{ext}"
+    with open(dest, "wb") as f:
+        shutil.copyfileobj(audio.file, f)
+    return {"bgm_path": str(dest), "name": audio.filename}
+
+
+@app.get("/api/bgm/list")
+def bgm_list():
+    """P4: list semua file BGM yang tersedia (music/ + cache/uploads/bgm/)."""
+    tracks = []
+    for d in [MUSIC_DIR, BGM_UPLOAD_DIR]:
+        if not d.is_dir():
+            continue
+        for pat in ("*.mp3", "*.wav", "*.m4a", "*.ogg", "*.flac"):
+            for f in sorted(d.glob(pat)):
+                tracks.append({"name": f.name, "path": str(f),
+                               "source": "library" if d == MUSIC_DIR else "custom"})
+    return {"tracks": tracks}
+
 
 class SubtitleRegenRequest(BaseModel):
     segments: list[dict]  # [{index, text, audio_path, keywords?}]
