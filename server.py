@@ -816,6 +816,12 @@ class RenderRequest(BaseModel):
     narration_audio_path: str
     output_name: str = "final_output"
     music_path: str | None = None  # explicit music file; None = auto-pick from music/ by script mood
+    add_music: bool = False
+    music_mood: str | None = None
+    bgm_volume: float = 1.0            # P4
+    bgm_fade_in: float = 2.0           # P4
+    bgm_fade_out: float = 2.0          # P4
+    bgm_custom_path: str | None = None # P4
 
 
 @app.post("/api/render")
