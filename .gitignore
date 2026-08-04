@@ -59,3 +59,6 @@ frontend/node_modules/
 frontend/dist/bundle.js
 frontend/dist/tailwind.css
 projects/
+
+# Artefak tes yang di-generate ulang tiap run
+*_script.json

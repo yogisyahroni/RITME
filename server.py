@@ -822,6 +822,7 @@ class RenderRequest(BaseModel):
     bgm_fade_in: float = 2.0           # P4
     bgm_fade_out: float = 2.0          # P4
     bgm_custom_path: str | None = None # P4
+    caption_animation: str | None = None # P6
 
 
 @app.post("/api/render")
@@ -869,6 +870,7 @@ class ExportRequest(BaseModel):
     bgm_volume: float = 1.0            # P4
     bgm_fade_in: float = 2.0           # P4
     bgm_fade_out: float = 2.0          # P4
+    caption_animation: str | None = None # P6
     caption_style: str = "minimal-white-center"
     transition_style: str = "hard_cut"
     ken_burns: bool = False
@@ -997,6 +999,7 @@ class TimelineExportRequest(BaseModel):
     bgm_fade_in: float = 2.0           # P4: fade in seconds
     bgm_fade_out: float = 2.0          # P4: fade out seconds
     bgm_custom_path: str | None = None # P4: uploaded custom BGM path
+    caption_animation: str | None = None # P6: none|typewriter|fade_in|slide_up
     caption_style: str = "minimal-white-center"
     transition_style: str = "hard_cut"   # "hard_cut" | "crossfade"
     ken_burns: bool = False
@@ -1022,6 +1025,7 @@ class BatchItem(BaseModel):
     bgm_fade_in: float = 2.0           # P4
     bgm_fade_out: float = 2.0          # P4
     bgm_custom_path: str | None = None # P4
+    caption_animation: str | None = None # P6
     caption_style: str = "minimal-white-center"
     transition_style: str = "hard_cut"
     ken_burns: bool = False
@@ -1066,6 +1070,7 @@ def batch_render(req: BatchRenderRequest):
                     bgm_volume=item.bgm_volume, bgm_fade_in=item.bgm_fade_in,
                     bgm_fade_out=item.bgm_fade_out, bgm_custom_path=item.bgm_custom_path,
                     caption_style=item.caption_style,
+                    caption_animation=item.caption_animation,
                     transition_style=item.transition_style,
                     ken_burns=item.ken_burns,
                     resolution=_aspect_resolution(item.aspect_ratio),
@@ -1186,6 +1191,7 @@ def timeline_export(req: TimelineExportRequest):
         bgm_volume=req.bgm_volume, bgm_fade_in=req.bgm_fade_in,
         bgm_fade_out=req.bgm_fade_out, bgm_custom_path=req.bgm_custom_path,
         caption_style=req.caption_style,
+        caption_animation=req.caption_animation,
         transition_style=req.transition_style,
         ken_burns=req.ken_burns,
         resolution=_aspect_resolution(req.aspect_ratio),
@@ -1216,6 +1222,7 @@ def timeline_preview(req: TimelineExportRequest):
         bgm_volume=req.bgm_volume, bgm_fade_in=req.bgm_fade_in,
         bgm_fade_out=req.bgm_fade_out,
         caption_style=req.caption_style,
+        caption_animation=req.caption_animation,
         transition_style=req.transition_style,
         ken_burns=req.ken_burns,
         resolution=_preview_resolution(req.aspect_ratio),

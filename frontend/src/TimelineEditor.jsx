@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import PreviewPlayer from "./PreviewPlayer";
 import { Play, Download, Trash2, ArrowUp, ArrowDown, Scissors, Clapperboard, Loader2, AlertTriangle, Info, Film, Captions, Undo2, Redo2, Music2, GripVertical, ZoomIn, Zap, Save, Upload, FileText, Volume2, VolumeX, Library, BarChart3, X } from "lucide-react";
 
 const C = {
@@ -65,7 +66,6 @@ function TimelineEditor({ narration, footageData, picks }) {
   const [error, setError] = useState(null);
   const [result, setResult] = useState(null);
   const [renderPath, setRenderPath] = useState("");  // server path hasil render
-  const [playing, setPlaying] = useState(false);
   const [zoom, setZoom] = useState(1.0);           // 3.2 zoom
   const [autoPreview, setAutoPreview] = useState(false); // 3.5 auto preview
   const [dragIdx, setDragIdx] = useState(null);    // 3.2 drag reorder
@@ -80,6 +80,7 @@ function TimelineEditor({ narration, footageData, picks }) {
     bgm_custom_path: "",
     bgm_custom_name: "",
     caption_style: "minimal-white-center",
+    caption_animation: "none",
     transition_style: "hard_cut",
     ken_burns: false,
     aspect_ratio: "9:16",
@@ -101,7 +102,7 @@ function TimelineEditor({ narration, footageData, picks }) {
       setFinishing(prev => ({ ...prev, watermark_path: data.watermark_path, watermark_name: f.name }));
     } catch (err) { setError(String(err)); }
   };
-  const videoRef = useRef(null);
+  const playerRef = useRef(null); // P5: PreviewPlayer imperative handle
   const cancelRef = useRef(null);
   const firstRunRef = useRef(true);
   const restoredRef = useRef(false);
@@ -203,9 +204,9 @@ function TimelineEditor({ narration, footageData, picks }) {
       else if (e.key === "Delete" && selectedIdx != null) { e.preventDefault(); removeSegment(selectedIdx); }
       else if (k === "s" && selectedIdx != null) { e.preventDefault(); splitSegment(selectedIdx); }
       else if (e.key === " " && !e.ctrlKey) {
-        if (videoRef.current && (videoRef.current.src || videoRef.current.currentSrc)) {
+        if (playerRef.current) {
           e.preventDefault();
-          if (videoRef.current.paused) videoRef.current.play(); else videoRef.current.pause();
+          playerRef.current.togglePlay();
         }
       }
     };
@@ -536,6 +537,7 @@ function TimelineEditor({ narration, footageData, picks }) {
         bgm_fade_out: finishing.bgm_fade_out,
         bgm_custom_path: finishing.bgm_custom_path || null,
         caption_style: finishing.caption_style,
+        caption_animation: finishing.caption_animation,
         transition_style: finishing.transition_style,
         ken_burns: finishing.ken_burns,
         aspect_ratio: finishing.aspect_ratio || "9:16",
@@ -561,7 +563,7 @@ function TimelineEditor({ narration, footageData, picks }) {
       if (preview) {
         setPreviewUrl(url);
         setJob(null);
-        if (videoRef.current) { videoRef.current.src = url; setPlaying(true); }
+        // PreviewPlayer remount via key={previewUrl} + autoPlay — auto play
       } else {
         setResult(url);
         setRenderPath(resp.headers.get("X-Render-Path") || "");
@@ -1197,6 +1199,16 @@ function TimelineEditor({ narration, footageData, picks }) {
               <option value="news-style-lower-third">News Lower Third</option>
             </select>
           </label>
+          {/* P6: caption text animation */}
+          <label className="flex items-center gap-2">
+            <span style={{ fontFamily: F.mono, fontSize: 10, color: C.paperFaint }}>Animasi teks</span>
+            <select value={finishing.caption_animation} onChange={e => setFinishing({ ...finishing, caption_animation: e.target.value })} style={{ fontFamily: F.mono, fontSize: 11, color: C.paper, background: C.panelRaised, border: `1px solid ${C.border}`, borderRadius: 3, padding: "3px 6px", outline: "none" }}>
+              <option value="none">None</option>
+              <option value="typewriter">Typewriter</option>
+              <option value="fade_in">Fade In</option>
+              <option value="slide_up">Slide Up</option>
+            </select>
+          </label>
           <label className="flex items-center gap-2">
             <span style={{ fontFamily: F.mono, fontSize: 10, color: C.paperFaint }}>Transisi</span>
             <select value={finishing.transition_style} onChange={e => setFinishing({ ...finishing, transition_style: e.target.value })} style={{ fontFamily: F.mono, fontSize: 11, color: C.paper, background: C.panelRaised, border: `1px solid ${C.border}`, borderRadius: 3, padding: "3px 6px", outline: "none" }}>
@@ -1252,7 +1264,7 @@ function TimelineEditor({ narration, footageData, picks }) {
         <PrimaryButton onClick={() => exportTimeline(false)} disabled={job !== null} icon={Clapperboard}>Render Video</PrimaryButton>
         {result && <PrimaryButton onClick={downloadVideo} icon={Download} variant="outline">Download .mp4</PrimaryButton>}
       </div>
-      {(previewUrl || result) && <div style={{ borderRadius: 8, overflow: "hidden", background: "#000" }}><video ref={videoRef} src={previewUrl || result} controls style={{ width: "100%", maxHeight: 400, display: "block" }} onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} /></div>}
+      {(previewUrl || result) && <PreviewPlayer key={previewUrl || result} ref={playerRef} src={previewUrl || result} autoPlay={!!previewUrl} style={{ marginTop: 0 }} />}
       {result && (
         <div className="flex flex-col gap-3 px-4 py-3.5 rounded" style={{ background: C.panel, border: `1px solid ${C.borderSoft}` }}>
           <span style={{ fontFamily: F.mono, fontSize: 10, color: C.amber, letterSpacing: "0.08em" }}>THUMBNAIL YOUTUBE</span>

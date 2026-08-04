@@ -249,6 +249,29 @@ def _apply_filter(clip, filter_name: str):
 # ---------------------------------------------------------------------------
 # Captions (Fase 1.1 karaoke + Fase 1.5 styling)
 # ---------------------------------------------------------------------------
+def _apply_caption_animation(clip, duration: float, animation: str):
+    """P6: wrap a caption ImageClip with a text-animation effect.
+    Returns the (possibly transformed) clip. 'none' returns it unchanged.
+    """
+    if animation == "none" or not animation or duration <= 0.05:
+        return clip
+    from moviepy.video.fx import FadeIn, SlideIn
+    try:
+        if animation == "typewriter":
+            # quick consecutive fade — each word pops in like typing
+            d = min(0.18, duration)
+            return clip.with_effects([FadeIn(d)])
+        if animation == "fade_in":
+            d = min(0.45, duration)
+            return clip.with_effects([FadeIn(d)])
+        if animation == "slide_up":
+            d = min(0.4, duration)
+            return clip.with_effects([SlideIn(d, "bottom")])
+    except Exception as e:
+        print(f"[stage5] caption animation '{animation}' skipped ({e})")
+    return clip
+
+
 def _caption_clips_for_segment(seg: dict, style: dict, frame_w: int, frame_h: int) -> list:
     """
     Returns the ImageClips that caption this segment. Karaoke mode renders one
@@ -258,6 +281,7 @@ def _caption_clips_for_segment(seg: dict, style: dict, frame_w: int, frame_h: in
     """
     words = seg.get("words") or []
     mode = style.get("mode", "karaoke")
+    animation = style.get("animation", "none")
 
     if mode == "karaoke" and words:
         frames = render_karaoke_images(words, style, frame_w, frame_h)
@@ -273,11 +297,9 @@ def _caption_clips_for_segment(seg: dict, style: dict, frame_w: int, frame_h: in
                 continue
             # moviepy 2.x ImageClip accepts numpy arrays (not PIL images directly)
             import numpy as _np
-            clips.append(
-                ImageClip(_np.array(f["image"]))
-                .with_duration(w_end - w_start)
-                .with_start(w_start)
-            )
+            dur = w_end - w_start
+            clip = ImageClip(_np.array(f["image"])).with_duration(dur).with_start(w_start)
+            clips.append(_apply_caption_animation(clip, dur, animation))
         if clips:
             return clips
 
@@ -287,7 +309,8 @@ def _caption_clips_for_segment(seg: dict, style: dict, frame_w: int, frame_h: in
     start = float(seg.get("start", 0.0))
     duration = float(seg.get("duration", 2.0))
     import numpy as _np
-    return [ImageClip(_np.array(img)).with_duration(duration).with_start(start)]
+    clip = ImageClip(_np.array(img)).with_duration(duration).with_start(start)
+    return [_apply_caption_animation(clip, duration, animation)]
 
 
 # ---------------------------------------------------------------------------
@@ -554,6 +577,7 @@ def assemble_video(timed_segments: list[dict], footage_map: dict[int, dict],
                     bgm_fade_out: float = 2.0,        # P4: fade out secs
                     bgm_custom_path: str | None = None, # P4: uploaded file
                     caption_style: str | dict | None = None,
+                    caption_animation: str | None = None, # P6: none|typewriter|fade_in|slide_up
                     transition_style: str | None = None,
                     ken_burns: bool | None = None,
                     resolution: tuple[int, int] | None = None,
@@ -626,6 +650,12 @@ def assemble_video(timed_segments: list[dict], footage_map: dict[int, dict],
         caption_style_dict = merged
     else:
         caption_style_dict = resolve_caption_style(template)
+
+    # P6: user caption animation override (default stays "none")
+    if caption_animation:
+        from pipeline.caption_renderer import CAPTION_ANIMATIONS
+        if caption_animation in CAPTION_ANIMATIONS:
+            caption_style_dict["animation"] = caption_animation
 
     if on_progress:
         on_progress(2, "Menyusun klip per segmen…")

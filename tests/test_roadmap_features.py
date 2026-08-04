@@ -1407,6 +1407,37 @@ def test_keyframe_p31():
                   b[0] is not None and b[0] - a[0] > 60, f"{a} -> {b}")
 
 
+def test_caption_animation():
+    print("\n[P6] Caption text animations (typewriter/fade_in/slide_up)")
+    from pipeline.caption_renderer import resolve_caption_style, render_karaoke_images
+    s = resolve_caption_style({"caption_style": "minimal-white-center"})
+    check("default none", s.get("animation") == "none", s.get("animation"))
+    s2 = resolve_caption_style({"caption_style": "minimal-white-center"}, animation="slide_up")
+    check("override slide_up", s2.get("animation") == "slide_up", s2.get("animation"))
+    s3 = resolve_caption_style({"caption_style": "minimal-white-center"}, animation="bounce")
+    check("invalid -> none", s3.get("animation") == "none", s3.get("animation"))
+    words = [{"text": "Halo", "start": 0.0, "end": 0.7}, {"text": "dunia", "start": 0.7, "end": 1.4}]
+    frames = render_karaoke_images(words, s2, 360, 640)
+    check("karaoke frames", len(frames) == 2, len(frames))
+    # render mini dengan animasi via assemble_video (end-to-end)
+    from pathlib import Path
+    from config import AUDIO_CACHE_DIR
+    import pipeline.stage5_assembly as s5
+    segs, _ = make_timed_segments()
+    clip = make_test_video(Path("cache") / "test" / "p6_anim.mp4", "green", 3.0)
+    footage = {"0": {"video_path": str(clip)}, "1": {"video_path": str(clip)}}
+    nar = make_test_audio(AUDIO_CACHE_DIR / "p6_nar.wav", 440, 4.0)
+    tpl = {"template_name": "p6_tpl", "pacing": {"avg_shot_duration": 4.0}, "caption_style": "minimal-white-center"}
+    (Path("templates") / "p6_tpl.json").write_text("{}", encoding="utf-8")
+    try:
+        out = s5.assemble_video(segs, footage, str(nar), tpl, output_name="p6_render", caption_animation="slide_up", resolution=(360, 640))
+        check("render slide_up", bool(out) and Path(out).exists(), out)
+        out2 = s5.assemble_video(segs, footage, str(nar), tpl, output_name="p6_render2", caption_animation="typewriter", resolution=(360, 640))
+        check("render typewriter", bool(out2) and Path(out2).exists(), out2)
+    finally:
+        (Path("templates") / "p6_tpl.json").unlink(missing_ok=True)
+
+
 def main():
     which = set(sys.argv[1:])
     run_all = "--all" in which or len(which) == 0
@@ -1436,6 +1467,7 @@ def main():
         ("speed_p21", test_speed_p21),
         ("analytics_p32", test_analytics_p32),
         ("keyframe_p31", test_keyframe_p31),
+        ("caption_animation_p6", test_caption_animation),
     ]
     if run_all or "--with-server" in which:
         tests.append(("server_render", test_server_render_endpoint))

@@ -96,7 +96,13 @@ def resolve_font(custom_path: str | None = None) -> str:
     )
 
 
-def resolve_caption_style(template: dict | None, mode_override: str | None = None) -> dict:
+# Caption text animations (P6) — applied per caption clip in stage5.
+CAPTION_ANIMATIONS = ("none", "typewriter", "fade_in", "slide_up")
+_DEFAULT_ANIMATION = "none"
+
+
+def resolve_caption_style(template: dict | None, mode_override: str | None = None,
+                          animation: str | None = None) -> dict:
     """
     Merge the template's caption_style (preset name OR inline dict) over the
     defaults, and apply the global CAPTION_MODE when the template is silent.
@@ -121,6 +127,11 @@ def resolve_caption_style(template: dict | None, mode_override: str | None = Non
         mode = mode_override
 
     base["mode"] = mode
+    # P6: text animation override (user choice; default "none")
+    if animation in CAPTION_ANIMATIONS:
+        base["animation"] = animation
+    elif "animation" not in base:
+        base["animation"] = _DEFAULT_ANIMATION
     base["font"] = resolve_font(base.get("font"))
     return base
 
