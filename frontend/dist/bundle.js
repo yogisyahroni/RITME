@@ -24102,6 +24102,16 @@
       ["bottom-right", "Bawah Kanan"]
     ];
     const TITLE_COLORS = ["#FFFFFF", "#FFD400", "#FF8A3D", "#6FE7DD", "#7FB88A", "#E8542E", "#E8A33D", "#C084FC"];
+    const FILTER_PRESETS = [
+      ["original", "Asli"],
+      ["warm", "Warm"],
+      ["cool", "Cool"],
+      ["bright", "Bright"],
+      ["vivid", "Vivid"],
+      ["bw", "B/W"],
+      ["cinematic", "Cinematic"],
+      ["vintage", "Vintage"]
+    ];
     const pxPerSec = 28 * zoom;
     (0, import_react3.useEffect)(() => {
       try {
@@ -24385,11 +24395,13 @@
             end_trim: s.end_trim,
             keywords: s.keywords || [],
             audio_path: s.audio_path || "",
-            words: s.words || []
+            words: s.words || [],
+            filter: s.filter || "original"
           })),
           finishing,
           narration_meta: { template_name: narration?.template_name || "" },
           template_name: narration?.template_name || "",
+          watermark_path: finishing.watermark_path || null,
           title_overlays: titleOverlays
         };
         const res = await fetch("/api/projects", {
@@ -24442,7 +24454,8 @@
             end_trim: s.end_trim,
             keywords: s.keywords || [],
             audio_path: narration?.segment_audio_paths?.[s.index] || "",
-            words: s.words || []
+            words: s.words || [],
+            filter: s.filter || "original"
           })),
           narration_audio_path: narration?.audio_path || "",
           output_name: `ritme_${Date.now()}`,
@@ -24686,7 +24699,24 @@
           rows: 2,
           style: { width: "100%", fontFamily: F.body, fontSize: 11.5, color: C.paper, background: C.panelRaised, border: `1px solid ${C.borderSoft}`, borderRadius: 3, padding: "4px 6px", outline: "none", resize: "vertical", lineHeight: 1.45 }
         }
-      ), /* @__PURE__ */ import_react3.default.createElement("span", { style: { fontFamily: F.mono, fontSize: 9.5, color: C.paperFaint, marginTop: 3 } }, s.keywords?.join(", "))),
+      ), /* @__PURE__ */ import_react3.default.createElement("span", { style: { fontFamily: F.mono, fontSize: 9.5, color: C.paperFaint, marginTop: 3 } }, s.keywords?.join(", ")), /* @__PURE__ */ import_react3.default.createElement("div", { className: "flex items-center gap-1 flex-wrap", style: { marginTop: 5 } }, /* @__PURE__ */ import_react3.default.createElement("span", { style: { fontFamily: F.mono, fontSize: 9, color: C.paperFaint } }, "FILTER"), FILTER_PRESETS.map(([v, l]) => /* @__PURE__ */ import_react3.default.createElement(
+        "button",
+        {
+          key: v,
+          onClick: () => updateSegment(i, { filter: v }),
+          style: {
+            fontFamily: F.mono,
+            fontSize: 9,
+            padding: "1px 7px",
+            borderRadius: 9,
+            cursor: "pointer",
+            background: (s.filter || "original") === v ? C.amber + "33" : C.panelRaised,
+            border: `1px solid ${(s.filter || "original") === v ? C.amber : C.borderSoft}`,
+            color: (s.filter || "original") === v ? C.amber : C.paperDim
+          }
+        },
+        l
+      )))),
       /* @__PURE__ */ import_react3.default.createElement("div", { className: "flex items-center gap-2 flex-shrink-0" }, /* @__PURE__ */ import_react3.default.createElement("div", { style: { display: "flex", alignItems: "center", gap: 4 } }, /* @__PURE__ */ import_react3.default.createElement("span", { style: { fontFamily: F.mono, fontSize: 9, color: C.paperFaint } }, "Start"), /* @__PURE__ */ import_react3.default.createElement("input", { type: "number", min: 0, max: Math.max(s.duration - 0.5, 0), step: 0.1, value: s.start_trim, onChange: (e) => addTrim(i, "start", parseFloat(e.target.value) || 0), style: { width: 42, fontFamily: F.mono, fontSize: 10, color: C.paper, background: C.panelRaised, border: `1px solid ${C.borderSoft}`, borderRadius: 3, padding: "2px 4px", outline: "none", textAlign: "center" } }), /* @__PURE__ */ import_react3.default.createElement("span", { style: { fontFamily: F.mono, fontSize: 9, color: C.paperFaint } }, "End"), /* @__PURE__ */ import_react3.default.createElement("input", { type: "number", min: 0, max: Math.max(s.duration - 0.5, 0), step: 0.1, value: s.end_trim, onChange: (e) => addTrim(i, "end", parseFloat(e.target.value) || 0), style: { width: 42, fontFamily: F.mono, fontSize: 10, color: C.paper, background: C.panelRaised, border: `1px solid ${C.borderSoft}`, borderRadius: 3, padding: "2px 4px", outline: "none", textAlign: "center" } }))),
       /* @__PURE__ */ import_react3.default.createElement("span", { style: { fontFamily: F.mono, fontSize: 11, color: C.paperFaint, width: 40, textAlign: "right", flexShrink: 0 } }, fmt(Math.max(s.duration - s.start_trim - s.end_trim, 0.5))),
       /* @__PURE__ */ import_react3.default.createElement("div", { className: "flex items-center gap-1 flex-shrink-0" }, narration?.segment_audio_paths?.[s.index] && /* @__PURE__ */ import_react3.default.createElement(

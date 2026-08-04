@@ -114,10 +114,10 @@ def _apply_kenburns(clip, seed: int, target_w: int, target_h: int):
 
 
 def _build_segment_clip(footage_path: str, sub_duration: float, target_w: int, target_h: int,
-                         offset_seed: float = 0.0, extend_secs: float = 0.0,
-                         allow_kenburns: bool = True, kenburns_on: bool = True,
-                         trim_start: float = 0.0, trim_end: float = 0.0,
-                         sub_index: int = 0):
+                        offset_seed: float = 0.0, extend_secs: float = 0.0,
+                        allow_kenburns: bool = True, kenburns_on: bool = True,
+                        trim_start: float = 0.0, trim_end: float = 0.0,
+                        sub_index: int = 0, filter_name: str = "original"):
     """
     Load footage, take a `sub_duration`-long window from it (optionally
     extended by `extend_secs` — used to compensate crossfade overlaps at the
@@ -158,7 +158,49 @@ def _build_segment_clip(footage_path: str, sub_duration: float, target_w: int, t
     if allow_kenburns and kenburns_on and sub_duration >= KEN_BURNS_MIN_DURATION:
         clip = _apply_kenburns(clip, offset_seed, target_w, target_h)
 
+    if filter_name and filter_name != "original":
+        clip = _apply_filter(clip, filter_name)
+
     return clip
+
+
+# ---------------------------------------------------------------------------
+# Color filters (P1.3) — numpy per-frame, preset per segmen
+# ---------------------------------------------------------------------------
+def _apply_filter(clip, filter_name: str):
+    """Color-grade preset per frame (numpy) — original = no-op.
+    Presets: warm, cool, bright, vivid, bw, cinematic, vintage."""
+    if not filter_name or filter_name == "original":
+        return clip
+    import numpy as _np
+
+    def _f(img):
+        a = _np.asarray(img).astype(_np.float32)
+        if filter_name == "warm":
+            a[..., 0] *= 1.18; a[..., 1] *= 1.04; a[..., 2] *= 0.86
+        elif filter_name == "cool":
+            a[..., 0] *= 0.88; a[..., 1] *= 1.00; a[..., 2] *= 1.18
+        elif filter_name == "bright":
+            a = a * 1.12 + 10
+        elif filter_name == "vivid":
+            gray = a.mean(axis=2, keepdims=True)
+            a = gray + (a - gray) * 1.35
+        elif filter_name == "bw":
+            g = a.mean(axis=2, keepdims=True)
+            a = _np.repeat(g, 3, axis=2)
+        elif filter_name == "cinematic":
+            a[..., 0] *= 1.12; a[..., 1] *= 1.02; a[..., 2] *= 0.85
+            a = (a - 128.0) * 1.06 + 128.0
+        elif filter_name == "vintage":
+            r, g, b = a[..., 0], a[..., 1], a[..., 2]
+            a = _np.stack([
+                r * 0.393 + g * 0.769 + b * 0.189,
+                r * 0.349 + g * 0.686 + b * 0.168,
+                r * 0.272 + g * 0.534 + b * 0.131,
+            ], axis=2)
+        return _np.clip(a, 0, 255).astype(_np.uint8)
+
+    return clip.image_transform(_f)  # moviepy 2.x (fl_image lama = image_transform)
 
 
 # ---------------------------------------------------------------------------
@@ -419,6 +461,7 @@ def assemble_video(timed_segments: list[dict], footage_map: dict[int, dict],
                 "trim_start": trim_start,
                 "trim_end": trim_end,
                 "sub_index": i,
+                "filter_name": seg.get("filter", "original"),  # P1.3
             })
             cursor += sub_dur
 
@@ -450,6 +493,7 @@ def assemble_video(timed_segments: list[dict], footage_map: dict[int, dict],
             kenburns_on=kenburns_on,
             trim_start=L.get("trim_start", 0.0), trim_end=L.get("trim_end", 0.0),
             sub_index=L.get("sub_index", 0),
+            filter_name=L.get("filter_name", "original"),
         )
         fade = L["fade_in"]
         if fade > 0:

@@ -943,6 +943,7 @@ class TimelineSegment(BaseModel):
     keywords: list[str] = []
     audio_path: str = ""     # Fase 3.0: per-segment narration audio
     words: list[dict] = []   # Fase 3.4: per-word subtitle timing (karaoke)
+    filter: str = "original"  # P1.3: color-grade preset per clip
 
 class TitleOverlay(BaseModel):
     """Teks/title manual di atas footage (P1.1) — 9 posisi, pill bg opsional."""

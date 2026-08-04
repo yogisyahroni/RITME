@@ -994,6 +994,55 @@ def test_title_overlay_p11():
         check("preview no overlay 200", rp.status_code == 200, f"got {rp.status_code}")
 
 
+def test_filter_p13():
+    """P1.3 color-grade filter — presets numeric + endpoint preview terima filter."""
+    import numpy as np
+    import pipeline.stage5_assembly as s5
+    from moviepy import ImageClip
+
+    w, h = 64, 64
+    base = np.zeros((h, w, 3), dtype=np.uint8)
+    base[..., 0] = np.linspace(200, 60, w).astype(np.uint8)  # R turun ke kanan
+    base[..., 2] = 80  # B konstan
+    base[..., 1] = 120
+
+    ic = ImageClip(base).with_duration(0.2)
+    f_orig = s5._apply_filter(ic, "original").get_frame(0.05)
+    check("original no-op", np.array_equal(f_orig, base), "")
+    f_none = s5._apply_filter(ic, None).get_frame(0.05)
+    check("none no-op", np.array_equal(f_none, base), "")
+
+    f_bw = s5._apply_filter(ic, "bw").get_frame(0.05)
+    check("bw channel sama", np.allclose(f_bw[..., 0], f_bw[..., 1]) and np.allclose(f_bw[..., 1], f_bw[..., 2]), "")
+    check("bw tetap gradasi", f_bw[0, 0, 0] > f_bw[0, -1, 0], f"kiri {f_bw[0,0,0]} kanan {f_bw[0,-1,0]}")
+
+    f_warm = s5._apply_filter(ic, "warm").get_frame(0.05)
+    check("warm R naik", f_warm[..., 0].mean() > base[..., 0].mean(), f"{f_warm[...,0].mean():.1f}")
+    check("warm B turun", f_warm[..., 2].mean() < base[..., 2].mean(), f"{f_warm[...,2].mean():.1f}")
+
+    f_cool = s5._apply_filter(ic, "cool").get_frame(0.05)
+    check("cool B naik", f_cool[..., 2].mean() > base[..., 2].mean(), f"{f_cool[...,2].mean():.1f}")
+
+    f_vint = s5._apply_filter(ic, "vintage").get_frame(0.05)
+    check("vintage channel beda", not np.allclose(f_vint[..., 0], f_vint[..., 2]), "")
+
+    # endpoint: preview dengan filter bw di segmen
+    import server as server_mod
+    from fastapi.testclient import TestClient
+    clip = make_test_video(Path("cache") / "test" / "clip_filter.mp4", "red", 2.0, size="360x640")
+    with TestClient(server_mod.app) as client:
+        body = {
+            "segments": [{"index": 0, "video_path": str(clip), "narration_text": "Test",
+                          "duration": 2.0, "start_trim": 0, "end_trim": 0, "filter": "bw"}],
+            "narration_audio_path": "",
+            "output_name": "filter_preview",
+        }
+        r = client.post("/api/timeline/preview", json=body)
+        check("preview filter 200", r.status_code == 200, f"got {r.status_code}: {r.text[:150]}")
+        r2 = client.post("/api/timeline/preview", json={**body, "filter": "warm"})
+        check("preview warm 200", r2.status_code == 200, f"got {r2.status_code}: {r2.text[:150]}")
+
+
 def main():
     which = set(sys.argv[1:])
     run_all = "--all" in which or len(which) == 0
@@ -1016,6 +1065,7 @@ def main():
         ("batch_render", test_batch_render),
         ("project_library_p01", test_project_library_p01),
         ("title_overlay_p11", test_title_overlay_p11),
+        ("filter_p13", test_filter_p13),
     ]
     if run_all or "--with-server" in which:
         tests.append(("server_render", test_server_render_endpoint))

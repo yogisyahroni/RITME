@@ -119,6 +119,11 @@ function TimelineEditor({ narration, footageData, picks }) {
     ["bottom-left", "Bawah Kiri"], ["bottom-center", "Bawah Tengah"], ["bottom-right", "Bawah Kanan"],
   ];
   const TITLE_COLORS = ["#FFFFFF", "#FFD400", "#FF8A3D", "#6FE7DD", "#7FB88A", "#E8542E", "#E8A33D", "#C084FC"];
+  // P1.3: color-grade presets per klip
+  const FILTER_PRESETS = [
+    ["original", "Asli"], ["warm", "Warm"], ["cool", "Cool"], ["bright", "Bright"],
+    ["vivid", "Vivid"], ["bw", "B/W"], ["cinematic", "Cinematic"], ["vintage", "Vintage"],
+  ];
 
   const pxPerSec = 28 * zoom;
 
@@ -397,10 +402,12 @@ function TimelineEditor({ narration, footageData, picks }) {
           index: s.index, video_path: s.video_path, narration_text: s.narration_text,
           duration: s.duration, start_trim: s.start_trim, end_trim: s.end_trim,
           keywords: s.keywords || [], audio_path: s.audio_path || "", words: s.words || [],
+          filter: s.filter || "original",
         })),
         finishing,
         narration_meta: { template_name: narration?.template_name || "" },
         template_name: narration?.template_name || "",
+        watermark_path: finishing.watermark_path || null,
         title_overlays: titleOverlays,
       };
       const res = await fetch("/api/projects", {
@@ -446,6 +453,7 @@ function TimelineEditor({ narration, footageData, picks }) {
           keywords: s.keywords || [],
           audio_path: narration?.segment_audio_paths?.[s.index] || "",
           words: s.words || [],
+          filter: s.filter || "original",
         })),
         narration_audio_path: narration?.audio_path || "",
         output_name: `ritme_${Date.now()}`,
@@ -737,6 +745,16 @@ function TimelineEditor({ narration, footageData, picks }) {
                   style={{ width: "100%", fontFamily: F.body, fontSize: 11.5, color: C.paper, background: C.panelRaised, border: `1px solid ${C.borderSoft}`, borderRadius: 3, padding: "4px 6px", outline: "none", resize: "vertical", lineHeight: 1.45 }}
                 />
                 <span style={{ fontFamily: F.mono, fontSize: 9.5, color: C.paperFaint, marginTop: 3 }}>{s.keywords?.join(", ")}</span>
+                <div className="flex items-center gap-1 flex-wrap" style={{ marginTop: 5 }}>
+                  <span style={{ fontFamily: F.mono, fontSize: 9, color: C.paperFaint }}>FILTER</span>
+                  {FILTER_PRESETS.map(([v, l]) => (
+                    <button key={v} onClick={() => updateSegment(i, { filter: v })}
+                      style={{ fontFamily: F.mono, fontSize: 9, padding: "1px 7px", borderRadius: 9, cursor: "pointer",
+                        background: (s.filter || "original") === v ? C.amber + "33" : C.panelRaised,
+                        border: `1px solid ${(s.filter || "original") === v ? C.amber : C.borderSoft}`,
+                        color: (s.filter || "original") === v ? C.amber : C.paperDim }}>{l}</button>
+                  ))}
+                </div>
               </div>
               <div className="flex items-center gap-2 flex-shrink-0">
                 <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
