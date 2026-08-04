@@ -412,16 +412,43 @@ def _speed_audio_preserve_pitch(path: str, speed: float) -> str | None:
         return None
 
 
+def _kf_val(kfs: list, t: float, attr: str, default: float) -> float:
+    """P3.1: interpolasi linear nilai keyframe pada waktu t (relatif ke start
+    elemen). Clamp ke keyframe pertama/terakhir di luar range."""
+    vals = [(float(k.get("t", 0.0)), k.get(attr)) for k in (kfs or []) if k.get(attr) is not None]
+    if not vals:
+        return default
+    if len(vals) == 1:
+        return float(vals[0][1])
+    vals.sort()
+    if t <= vals[0][0]:
+        return float(vals[0][1])
+    if t >= vals[-1][0]:
+        return float(vals[-1][1])
+    for i in range(len(vals) - 1):
+        t0, v0 = vals[i]
+        t1, v1 = vals[i + 1]
+        if t0 <= t <= t1:
+            if t1 - t0 < 1e-9:
+                return float(v0)
+            f = (t - t0) / (t1 - t0)
+            return float(v0) * (1 - f) + float(v1) * f
+    return float(vals[-1][1])
+
+
 def _sticker_clips_for_overlays(stickers, timed_segments, frame_w, frame_h) -> list:
     """Sticker/gambar overlay manual (P1.4) -> ImageClips pada timeline absolut.
     Setiap sticker: {segment_index, image_path, x, y (0-1 relatif frame,
     0.5 = tengah), scale (1.0 = 15% lebar frame), rotation (derajat),
-    start_offset, duration}."""
+    start_offset, duration}. P3.1: kalau punya `keyframes` (list {t, x?, y?,
+    scale?, rotation?} relatif ke start elemen) -> transform dianimasikan
+    dengan interpolasi linear per-frame."""
     if not stickers:
         return []
     clips = []
     import numpy as _np
     from PIL import Image as PILImage
+    from moviepy.video.fx import Resize, Rotate
     seg_by_idx = {}
     for i, s in enumerate(timed_segments):
         idx = s.get("index", i)
@@ -439,21 +466,13 @@ def _sticker_clips_for_overlays(stickers, timed_segments, frame_w, frame_h) -> l
             img = PILImage.open(path)
             if img.mode != "RGBA":
                 img = img.convert("RGBA")
-            rot = float(st.get("rotation", 0.0) or 0.0)
-            if rot:
-                img = img.rotate(rot, expand=True, resample=PILImage.BICUBIC)
             sw, sh = img.size
             base_w = int(frame_w * 0.15)
             scale = float(st.get("scale", 1.0) or 1.0)
-            w = max(int(base_w * scale), 8)
-            h = max(int(sh * w / sw), 8)
-            clip = ImageClip(_np.array(img)).resized((w, h))
-            # posisi dari CENTER sticker (rotasi gak bikin loncat)
-            x = float(st.get("x", 0.5) or 0.5)
-            y = float(st.get("y", 0.5) or 0.5)
-            cx = x * frame_w - w / 2.0
-            cy = y * frame_h - h / 2.0
-            clip = clip.with_position((cx, cy))
+            x0 = float(st.get("x", 0.5) or 0.5)
+            y0 = float(st.get("y", 0.5) or 0.5)
+            rot0 = float(st.get("rotation", 0.0) or 0.0)
+            kfs = st.get("keyframes") or []
             seg_start = float(seg.get("start", 0.0) or 0.0)
             seg_dur = float(seg.get("duration", 0.0) or 0.0)
             if seg_dur <= 0:
@@ -464,9 +483,48 @@ def _sticker_clips_for_overlays(stickers, timed_segments, frame_w, frame_h) -> l
             if dur <= 0:
                 dur = seg_dur - off
             dur = min(dur, max(seg_dur - off, 0.1))
-            clips.append(
-                clip.with_duration(max(dur, 0.1)).with_start(seg_start + off)
-            )
+            dur = max(dur, 0.1)
+
+            animated = any(k.get(attr) is not None for k in kfs
+                           for attr in ("x", "y", "scale", "rotation"))
+            if not animated:
+                # P1.4 static path (unchanged behaviour)
+                if rot0:
+                    img = img.rotate(rot0, expand=True, resample=PILImage.BICUBIC)
+                w = max(int(base_w * scale), 8)
+                h = max(int(sh * w / sw), 8)
+                clip = ImageClip(_np.array(img)).resized((w, h))
+                cx = x0 * frame_w - w / 2.0
+                cy = y0 * frame_h - h / 2.0
+                clip = clip.with_position((cx, cy))
+            else:
+                # P3.1: animated — baseline = nilai saat t=0 (atau default),
+                # transform callable per-frame.
+                b_scale = _kf_val(kfs, 0.0, "scale", scale)
+                b_rot = _kf_val(kfs, 0.0, "rotation", rot0)
+                if b_rot:
+                    img = img.rotate(b_rot, expand=True, resample=PILImage.BICUBIC)
+                w = max(int(base_w * b_scale), 8)
+                h = max(int(sh * w / sw), 8)
+                clip = ImageClip(_np.array(img)).resized((w, h))
+                fx_chain = []
+                if any(k.get("scale") is not None for k in kfs):
+                    fx_chain.append(Resize(lambda t: _kf_val(kfs, t, "scale", scale) / max(b_scale, 1e-6)))
+                if any(k.get("rotation") is not None for k in kfs):
+                    fx_chain.append(Rotate(lambda t: _kf_val(kfs, t, "rotation", rot0) - b_rot))
+                if fx_chain:
+                    clip = clip.with_effects(fx_chain)
+
+                def _pos(t):
+                    xx = _kf_val(kfs, t, "x", x0)
+                    yy = _kf_val(kfs, t, "y", y0)
+                    sc = _kf_val(kfs, t, "scale", scale)
+                    ww = base_w * sc
+                    hh = sh * ww / sw
+                    return (xx * frame_w - ww / 2.0, yy * frame_h - hh / 2.0)
+
+                clip = clip.with_position(_pos)
+            clips.append(clip.with_duration(dur).with_start(seg_start + off))
         except Exception as e:
             print(f"[stage5] Sticker overlay skipped ({e})")
     return clips

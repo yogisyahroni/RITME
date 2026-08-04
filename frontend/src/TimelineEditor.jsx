@@ -483,6 +483,25 @@ function TimelineEditor({ narration, footageData, picks }) {
     setStickerOverlays(prev => prev.filter(o => o.id !== id));
   };
 
+  // P3.1: keyframe animation — capture nilai sekarang + CRUD
+  const addKeyframe = (o) => {
+    const kfs = o.keyframes || [];
+    const lastT = kfs.length ? Math.max(...kfs.map(k => k.t || 0)) : 0;
+    const t = Math.min(lastT + Math.max(o.duration / 2, 0.5), Math.max(o.duration - 0.1, 0.1));
+    const kf = { id: `kf-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`, t: Math.round(t * 10) / 10,
+                 x: o.x, y: o.y, scale: o.scale, rotation: o.rotation };
+    updateSticker(o.id, { keyframes: [...kfs, kf] });
+  };
+  const updateKeyframe = (o, kfId, patch) => {
+    updateSticker(o.id, { keyframes: (o.keyframes || []).map(k => k.id === kfId ? { ...k, ...patch } : k) });
+  };
+  const snapshotKeyframe = (o, kfId) => {
+    updateKeyframe(o, kfId, { x: o.x, y: o.y, scale: o.scale, rotation: o.rotation });
+  };
+  const removeKeyframe = (o, kfId) => {
+    updateSticker(o.id, { keyframes: (o.keyframes || []).filter(k => k.id !== kfId) });
+  };
+
   const exportTimeline = async (preview = false) => {
     setError(null);
     setJob({ progress: 5, message: preview ? "Membuat preview..." : "Merender video..." });
@@ -521,7 +540,7 @@ function TimelineEditor({ narration, footageData, picks }) {
         sticker_overlays: stickerOverlays.map(o => ({
           segment_index: o.segment_index, image_path: o.image_path, x: o.x, y: o.y,
           scale: o.scale, rotation: o.rotation, start_offset: o.start_offset,
-          duration: o.duration,
+          duration: o.duration, keyframes: o.keyframes || [],
         })),
       };
       const resp = await fetch(endpoint, {
@@ -1043,6 +1062,44 @@ function TimelineEditor({ narration, footageData, picks }) {
                         <input type="number" min={0.5} max={60} step={0.5} value={o.duration} onChange={e => updateSticker(o.id, { duration: parseFloat(e.target.value) || 3 })}
                           style={{ width: 52, fontFamily: F.mono, fontSize: 10, color: C.paper, background: C.panelRaised, border: `1px solid ${C.borderSoft}`, borderRadius: 3, padding: "2px 5px", outline: "none", textAlign: "center" }} />s
                       </label>
+                    </div>
+                    {/* P3.1: keyframe animation */}
+                    <div className="flex flex-col gap-1.5 rounded p-2" style={{ background: C.panel, border: `1px dashed ${(o.keyframes || []).length >= 2 ? C.tally : C.borderSoft}` }}>
+                      <div className="flex items-center justify-between">
+                        <span style={{ fontFamily: F.mono, fontSize: 9, color: (o.keyframes || []).length >= 2 ? C.tally : C.paperFaint, letterSpacing: "0.06em" }}>
+                          KEYFRAMES {(o.keyframes || []).length >= 2 ? "● ANIMASI AKTIF" : `(${(o.keyframes || []).length})`}
+                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <button onClick={() => addKeyframe(o)} className="px-2 py-0.5 rounded"
+                            style={{ fontFamily: F.mono, fontSize: 9, color: C.amber, background: `${C.amber}1a`, border: `1px solid ${C.amber}55`, cursor: "pointer" }}>
+                            + KF (nilai sekarang)
+                          </button>
+                          {(o.keyframes || []).length > 0 && (
+                            <button onClick={() => updateSticker(o.id, { keyframes: [] })} className="px-2 py-0.5 rounded"
+                              style={{ fontFamily: F.mono, fontSize: 9, color: C.red, background: "none", border: `1px solid ${C.red}44`, cursor: "pointer" }}>
+                              Hapus semua
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      {(o.keyframes || []).length === 0 && (
+                        <span style={{ fontFamily: F.body, fontSize: 10, color: C.paperFaint }}>
+                          Atur posisi/ukuran/rotasi, klik "+ KF" di waktu berbeda — 2 keyframe bikin gerakan linear (CapCut style).
+                        </span>
+                      )}
+                      {(o.keyframes || []).sort((a, b) => (a.t || 0) - (b.t || 0)).map(k => (
+                        <div key={k.id} className="flex items-center gap-2 flex-wrap rounded px-1.5 py-1"
+                          style={{ background: C.panelRaised, border: `1px solid ${C.borderSoft}` }}>
+                          <span style={{ fontFamily: F.mono, fontSize: 9, color: C.paperFaint }}>t=</span>
+                          <input type="number" min={0} max={o.duration} step={0.1} value={k.t} onChange={e => updateKeyframe(o, k.id, { t: parseFloat(e.target.value) || 0 })}
+                            style={{ width: 44, fontFamily: F.mono, fontSize: 9.5, color: C.paper, background: C.panel, border: `1px solid ${C.borderSoft}`, borderRadius: 3, padding: "1px 4px", outline: "none", textAlign: "center" }} />
+                          <span style={{ fontFamily: F.mono, fontSize: 8.5, color: C.paperDim }}>x{k.x?.toFixed?.(2) ?? k.x} y{k.y?.toFixed?.(2) ?? k.y} s{k.scale?.toFixed?.(1) ?? k.scale} r{k.rotation ?? 0}°</span>
+                          <button onClick={() => snapshotKeyframe(o, k.id)} title="Update ke nilai slider sekarang"
+                            style={{ fontFamily: F.mono, fontSize: 9, color: C.cyan, background: "none", border: "none", cursor: "pointer", padding: 0 }}>⟲</button>
+                          <button onClick={() => removeKeyframe(o, k.id)} title="Hapus keyframe"
+                            style={{ fontFamily: F.mono, fontSize: 9, color: C.red, background: "none", border: "none", cursor: "pointer", padding: 0 }}>✕</button>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 ))}

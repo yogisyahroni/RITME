@@ -1318,6 +1318,95 @@ def test_analytics_p32():
         check("analytics nama", d["name"] == "analytics_test", f"{d['name']}")
 
 
+def test_keyframe_p31():
+    """P3.1 keyframe animation — _kf_val interpolasi + sticker animasi posisi (kiri->kanan)."""
+    import numpy as np
+    import pipeline.stage5_assembly as s5
+    from PIL import Image
+    from moviepy import CompositeVideoClip
+    from moviepy import VideoFileClip
+    import server as server_mod
+    from fastapi.testclient import TestClient
+
+    # 1. _kf_val: interpolasi linear + clamp
+    kfs = [{"t": 0.0, "x": 0.1}, {"t": 1.0, "x": 0.9}, {"t": 2.0, "x": 0.5}]
+    check("kf t=0 -> 0.1", abs(s5._kf_val(kfs, 0.0, "x", 0.5) - 0.1) < 1e-9,
+          f"{s5._kf_val(kfs, 0, 'x', 0.5)}")
+    check("kf t=0.5 -> 0.5", abs(s5._kf_val(kfs, 0.5, "x", 0.5) - 0.5) < 1e-9,
+          f"{s5._kf_val(kfs, 0.5, 'x', 0.5)}")
+    check("kf t=1.5 -> 0.7", abs(s5._kf_val(kfs, 1.5, "x", 0.5) - 0.7) < 1e-9,
+          f"{s5._kf_val(kfs, 1.5, 'x', 0.5)}")
+    check("kf sebelum -> clamp first", abs(s5._kf_val(kfs, -1, "x", 0.5) - 0.1) < 1e-9,
+          f"{s5._kf_val(kfs, -1, 'x', 0.5)}")
+    check("kf sesudah -> clamp last", abs(s5._kf_val(kfs, 9, "x", 0.5) - 0.5) < 1e-9,
+          f"{s5._kf_val(kfs, 9, 'x', 0.5)}")
+    check("kf tanpa attr -> default", abs(s5._kf_val(kfs, 1, "y", 0.33) - 0.33) < 1e-9,
+          f"{s5._kf_val(kfs, 1, 'y', 0.33)}")
+    check("kf kosong -> default", abs(s5._kf_val([], 1, "x", 0.25) - 0.25) < 1e-9)
+
+    # 2. sticker animasi: posisi pindah kiri -> kanan (komposit full-frame)
+    st_path = Path("cache") / "test" / "sticker_kf.png"
+    st_path.parent.mkdir(parents=True, exist_ok=True)
+    img = Image.new("RGBA", (100, 100), (0, 0, 0, 0))
+    for px in range(10, 90):
+        for py in range(10, 90):
+            img.putpixel((px, py), (255, 212, 0, 255))
+    img.save(st_path)
+
+    segs, _ = make_timed_segments()
+    seg0_dur = segs[0]["duration"]
+    stickers = [{
+        "segment_index": 0, "image_path": str(st_path),
+        "x": 0.15, "y": 0.5, "scale": 1.0, "rotation": 0.0,
+        "start_offset": 0.0, "duration": seg0_dur,
+        "keyframes": [{"t": 0.0, "x": 0.15, "y": 0.5},
+                      {"t": seg0_dur, "x": 0.85, "y": 0.5}],
+    }]
+    clips = s5._sticker_clips_for_overlays(stickers, segs, 360, 640)
+    check("keyframe -> 1 clip", len(clips) == 1, f"got {len(clips)}")
+    if clips:
+        comp = CompositeVideoClip([clips[0]], size=(360, 640))
+        def _cy(fr):
+            ys, xs = np.where((fr[..., 0] > 180) & (fr[..., 1] > 140) & (fr[..., 2] < 120))
+            return (xs.mean(), ys.mean()) if len(xs) else (None, None)
+        c0 = _cy(comp.get_frame(0.2))
+        c1 = _cy(comp.get_frame(max(seg0_dur - 0.2, 0.3)))
+        check("frame awal sticker di kiri", c0[0] is not None and c0[0] < 120, f"{c0}")
+        check("frame akhir sticker di kanan", c1[0] is not None and c1[0] > 200, f"{c1}")
+        check("animasi: centroid bergerak >80px", abs(c1[0] - c0[0]) > 80,
+              f"x {c0[0]:.0f} -> {c1[0]:.0f}")
+
+    # 3. API preview dengan keyframes -> 200 + kuning tampil
+    clip = make_test_video(Path("cache") / "test" / "kf_base.mp4", "black", 3.0, size="360x640")
+    with TestClient(server_mod.app) as client:
+        body = {
+            "segments": [{"index": 0, "video_path": str(clip), "narration_text": "T",
+                          "duration": 3.0, "start_trim": 0, "end_trim": 0}],
+            "narration_audio_path": "",
+            "output_name": "kf_preview",
+            "sticker_overlays": [{"segment_index": 0, "image_path": str(st_path),
+                                  "x": 0.15, "y": 0.5, "scale": 1.0, "rotation": 0.0,
+                                  "start_offset": 0.0, "duration": 2.6,
+                                  "keyframes": [{"t": 0.0, "x": 0.15, "y": 0.5},
+                                                {"t": 2.6, "x": 0.85, "y": 0.5}]}],
+        }
+        r2 = client.post("/api/timeline/preview", json=body)
+        check("preview keyframe 200", r2.status_code == 200, f"got {r2.status_code}: {r2.text[:120]}")
+        if r2.status_code == 200:
+            tmp = Path("cache") / "test" / "kf_out.mp4"
+            tmp.write_bytes(r2.content)
+            with VideoFileClip(str(tmp)) as vc:
+                fa = vc.get_frame(0.3)
+                fb = vc.get_frame(2.4)
+            def _cy2(fr):
+                ys, xs = np.where((fr[..., 0] > 180) & (fr[..., 1] > 140) & (fr[..., 2] < 120))
+                return (xs.mean(), ys.mean()) if len(xs) else (None, None)
+            a = _cy2(fa); b = _cy2(fb)
+            check("preview: kuning di kiri", a[0] is not None and a[0] < 150, f"{a}")
+            check("preview: kuning BERGERAK ke kanan (keyframe jalan)",
+                  b[0] is not None and b[0] - a[0] > 60, f"{a} -> {b}")
+
+
 def main():
     which = set(sys.argv[1:])
     run_all = "--all" in which or len(which) == 0
@@ -1346,6 +1435,7 @@ def main():
         ("aspect_p22", test_aspect_p22),
         ("speed_p21", test_speed_p21),
         ("analytics_p32", test_analytics_p32),
+        ("keyframe_p31", test_keyframe_p31),
     ]
     if run_all or "--with-server" in which:
         tests.append(("server_render", test_server_render_endpoint))

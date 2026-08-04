@@ -24503,6 +24503,29 @@
     const removeSticker = (id) => {
       setStickerOverlays((prev) => prev.filter((o) => o.id !== id));
     };
+    const addKeyframe = (o) => {
+      const kfs = o.keyframes || [];
+      const lastT = kfs.length ? Math.max(...kfs.map((k) => k.t || 0)) : 0;
+      const t = Math.min(lastT + Math.max(o.duration / 2, 0.5), Math.max(o.duration - 0.1, 0.1));
+      const kf = {
+        id: `kf-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
+        t: Math.round(t * 10) / 10,
+        x: o.x,
+        y: o.y,
+        scale: o.scale,
+        rotation: o.rotation
+      };
+      updateSticker(o.id, { keyframes: [...kfs, kf] });
+    };
+    const updateKeyframe = (o, kfId, patch) => {
+      updateSticker(o.id, { keyframes: (o.keyframes || []).map((k) => k.id === kfId ? { ...k, ...patch } : k) });
+    };
+    const snapshotKeyframe = (o, kfId) => {
+      updateKeyframe(o, kfId, { x: o.x, y: o.y, scale: o.scale, rotation: o.rotation });
+    };
+    const removeKeyframe = (o, kfId) => {
+      updateSticker(o.id, { keyframes: (o.keyframes || []).filter((k) => k.id !== kfId) });
+    };
     const exportTimeline = async (preview = false) => {
       setError(null);
       setJob({ progress: 5, message: preview ? "Membuat preview..." : "Merender video..." });
@@ -24551,7 +24574,8 @@
             scale: o.scale,
             rotation: o.rotation,
             start_offset: o.start_offset,
-            duration: o.duration
+            duration: o.duration,
+            keyframes: o.keyframes || []
           }))
         };
         const resp = await fetch(endpoint, {
@@ -25025,7 +25049,62 @@
         onChange: (e) => updateSticker(o.id, { duration: parseFloat(e.target.value) || 3 }),
         style: { width: 52, fontFamily: F.mono, fontSize: 10, color: C.paper, background: C.panelRaised, border: `1px solid ${C.borderSoft}`, borderRadius: 3, padding: "2px 5px", outline: "none", textAlign: "center" }
       }
-    ), "s")))))))), error && /* @__PURE__ */ import_react3.default.createElement("div", { className: "flex items-center gap-2 px-4 py-3 rounded", style: { background: "#2A1712", border: `1px solid ${C.tallyDim}` } }, /* @__PURE__ */ import_react3.default.createElement(TriangleAlert, { size: 14, color: C.tally }), /* @__PURE__ */ import_react3.default.createElement("span", { style: { fontFamily: F.mono, fontSize: 11, color: C.paperDim } }, error)), job && /* @__PURE__ */ import_react3.default.createElement("div", { className: "flex items-center gap-3 px-4 py-3 rounded", style: { background: C.panel, border: `1px solid ${C.borderSoft}` } }, /* @__PURE__ */ import_react3.default.createElement(LoaderCircle, { size: 14, color: C.amber, className: "animate-spin" }), /* @__PURE__ */ import_react3.default.createElement("span", { style: { fontFamily: F.body, fontSize: 12, color: C.paperDim } }, job.message)), /* @__PURE__ */ import_react3.default.createElement("div", { className: "flex flex-col gap-3 px-4 py-3.5 rounded", style: { background: C.panel, border: `1px solid ${C.borderSoft}` } }, /* @__PURE__ */ import_react3.default.createElement("span", { style: { fontFamily: F.mono, fontSize: 10, color: C.amber, letterSpacing: "0.08em" } }, "FINISHING OPTIONS"), /* @__PURE__ */ import_react3.default.createElement("div", { className: "flex flex-wrap items-center gap-x-5 gap-y-3" }, /* @__PURE__ */ import_react3.default.createElement("label", { className: "flex items-center gap-2", style: { cursor: "pointer" } }, /* @__PURE__ */ import_react3.default.createElement("input", { type: "checkbox", checked: finishing.add_music, onChange: (e) => setFinishing({ ...finishing, add_music: e.target.checked }), style: { accentColor: C.tally } }), /* @__PURE__ */ import_react3.default.createElement("span", { style: { fontFamily: F.body, fontSize: 12, color: C.paper } }, "Tambah musik")), finishing.add_music && /* @__PURE__ */ import_react3.default.createElement("label", { className: "flex items-center gap-2" }, /* @__PURE__ */ import_react3.default.createElement("span", { style: { fontFamily: F.mono, fontSize: 10, color: C.paperFaint } }, "Mood"), /* @__PURE__ */ import_react3.default.createElement("select", { value: finishing.music_mood, onChange: (e) => setFinishing({ ...finishing, music_mood: e.target.value }), style: { fontFamily: F.mono, fontSize: 11, color: C.paper, background: C.panelRaised, border: `1px solid ${C.border}`, borderRadius: 3, padding: "3px 6px", outline: "none" } }, ["calm", "tense", "sad", "epic", "upbeat"].map((m) => /* @__PURE__ */ import_react3.default.createElement("option", { key: m, value: m }, m)))), /* @__PURE__ */ import_react3.default.createElement("label", { className: "flex items-center gap-2" }, /* @__PURE__ */ import_react3.default.createElement("span", { style: { fontFamily: F.mono, fontSize: 10, color: C.paperFaint } }, "Gaya caption"), /* @__PURE__ */ import_react3.default.createElement("select", { value: finishing.caption_style, onChange: (e) => setFinishing({ ...finishing, caption_style: e.target.value }), style: { fontFamily: F.mono, fontSize: 11, color: C.paper, background: C.panelRaised, border: `1px solid ${C.border}`, borderRadius: 3, padding: "3px 6px", outline: "none" } }, /* @__PURE__ */ import_react3.default.createElement("option", { value: "bold-white-bottom" }, "Bold White Bottom"), /* @__PURE__ */ import_react3.default.createElement("option", { value: "minimal-white-center" }, "Minimal White Center"), /* @__PURE__ */ import_react3.default.createElement("option", { value: "news-style-lower-third" }, "News Lower Third"))), /* @__PURE__ */ import_react3.default.createElement("label", { className: "flex items-center gap-2" }, /* @__PURE__ */ import_react3.default.createElement("span", { style: { fontFamily: F.mono, fontSize: 10, color: C.paperFaint } }, "Transisi"), /* @__PURE__ */ import_react3.default.createElement("select", { value: finishing.transition_style, onChange: (e) => setFinishing({ ...finishing, transition_style: e.target.value }), style: { fontFamily: F.mono, fontSize: 11, color: C.paper, background: C.panelRaised, border: `1px solid ${C.border}`, borderRadius: 3, padding: "3px 6px", outline: "none" } }, /* @__PURE__ */ import_react3.default.createElement("option", { value: "hard_cut" }, "Hard Cut"), /* @__PURE__ */ import_react3.default.createElement("option", { value: "crossfade" }, "Crossfade"), /* @__PURE__ */ import_react3.default.createElement("option", { value: "dip_to_black" }, "Dip to Black"), /* @__PURE__ */ import_react3.default.createElement("option", { value: "slide" }, "Slide"), /* @__PURE__ */ import_react3.default.createElement("option", { value: "zoom" }, "Zoom"))), /* @__PURE__ */ import_react3.default.createElement("label", { className: "flex items-center gap-2", style: { cursor: "pointer" } }, /* @__PURE__ */ import_react3.default.createElement("input", { type: "checkbox", checked: finishing.ken_burns, onChange: (e) => setFinishing({ ...finishing, ken_burns: e.target.checked }), style: { accentColor: C.tally } }), /* @__PURE__ */ import_react3.default.createElement("span", { style: { fontFamily: F.body, fontSize: 12, color: C.paper } }, "Ken Burns (zoom pelan)")), /* @__PURE__ */ import_react3.default.createElement("div", { className: "flex items-center gap-2" }, /* @__PURE__ */ import_react3.default.createElement("span", { style: { fontFamily: F.mono, fontSize: 10, color: C.paperFaint } }, "Aspect"), [["9:16", "TikTok 9:16"], ["16:9", "YouTube 16:9"], ["1:1", "IG 1:1"]].map(([v, l]) => /* @__PURE__ */ import_react3.default.createElement(
+    ), "s")), /* @__PURE__ */ import_react3.default.createElement("div", { className: "flex flex-col gap-1.5 rounded p-2", style: { background: C.panel, border: `1px dashed ${(o.keyframes || []).length >= 2 ? C.tally : C.borderSoft}` } }, /* @__PURE__ */ import_react3.default.createElement("div", { className: "flex items-center justify-between" }, /* @__PURE__ */ import_react3.default.createElement("span", { style: { fontFamily: F.mono, fontSize: 9, color: (o.keyframes || []).length >= 2 ? C.tally : C.paperFaint, letterSpacing: "0.06em" } }, "KEYFRAMES ", (o.keyframes || []).length >= 2 ? "\u25CF ANIMASI AKTIF" : `(${(o.keyframes || []).length})`), /* @__PURE__ */ import_react3.default.createElement("div", { className: "flex items-center gap-1.5" }, /* @__PURE__ */ import_react3.default.createElement(
+      "button",
+      {
+        onClick: () => addKeyframe(o),
+        className: "px-2 py-0.5 rounded",
+        style: { fontFamily: F.mono, fontSize: 9, color: C.amber, background: `${C.amber}1a`, border: `1px solid ${C.amber}55`, cursor: "pointer" }
+      },
+      "+ KF (nilai sekarang)"
+    ), (o.keyframes || []).length > 0 && /* @__PURE__ */ import_react3.default.createElement(
+      "button",
+      {
+        onClick: () => updateSticker(o.id, { keyframes: [] }),
+        className: "px-2 py-0.5 rounded",
+        style: { fontFamily: F.mono, fontSize: 9, color: C.red, background: "none", border: `1px solid ${C.red}44`, cursor: "pointer" }
+      },
+      "Hapus semua"
+    ))), (o.keyframes || []).length === 0 && /* @__PURE__ */ import_react3.default.createElement("span", { style: { fontFamily: F.body, fontSize: 10, color: C.paperFaint } }, 'Atur posisi/ukuran/rotasi, klik "+ KF" di waktu berbeda \u2014 2 keyframe bikin gerakan linear (CapCut style).'), (o.keyframes || []).sort((a, b) => (a.t || 0) - (b.t || 0)).map((k) => /* @__PURE__ */ import_react3.default.createElement(
+      "div",
+      {
+        key: k.id,
+        className: "flex items-center gap-2 flex-wrap rounded px-1.5 py-1",
+        style: { background: C.panelRaised, border: `1px solid ${C.borderSoft}` }
+      },
+      /* @__PURE__ */ import_react3.default.createElement("span", { style: { fontFamily: F.mono, fontSize: 9, color: C.paperFaint } }, "t="),
+      /* @__PURE__ */ import_react3.default.createElement(
+        "input",
+        {
+          type: "number",
+          min: 0,
+          max: o.duration,
+          step: 0.1,
+          value: k.t,
+          onChange: (e) => updateKeyframe(o, k.id, { t: parseFloat(e.target.value) || 0 }),
+          style: { width: 44, fontFamily: F.mono, fontSize: 9.5, color: C.paper, background: C.panel, border: `1px solid ${C.borderSoft}`, borderRadius: 3, padding: "1px 4px", outline: "none", textAlign: "center" }
+        }
+      ),
+      /* @__PURE__ */ import_react3.default.createElement("span", { style: { fontFamily: F.mono, fontSize: 8.5, color: C.paperDim } }, "x", k.x?.toFixed?.(2) ?? k.x, " y", k.y?.toFixed?.(2) ?? k.y, " s", k.scale?.toFixed?.(1) ?? k.scale, " r", k.rotation ?? 0, "\xB0"),
+      /* @__PURE__ */ import_react3.default.createElement(
+        "button",
+        {
+          onClick: () => snapshotKeyframe(o, k.id),
+          title: "Update ke nilai slider sekarang",
+          style: { fontFamily: F.mono, fontSize: 9, color: C.cyan, background: "none", border: "none", cursor: "pointer", padding: 0 }
+        },
+        "\u27F2"
+      ),
+      /* @__PURE__ */ import_react3.default.createElement(
+        "button",
+        {
+          onClick: () => removeKeyframe(o, k.id),
+          title: "Hapus keyframe",
+          style: { fontFamily: F.mono, fontSize: 9, color: C.red, background: "none", border: "none", cursor: "pointer", padding: 0 }
+        },
+        "\u2715"
+      )
+    ))))))))), error && /* @__PURE__ */ import_react3.default.createElement("div", { className: "flex items-center gap-2 px-4 py-3 rounded", style: { background: "#2A1712", border: `1px solid ${C.tallyDim}` } }, /* @__PURE__ */ import_react3.default.createElement(TriangleAlert, { size: 14, color: C.tally }), /* @__PURE__ */ import_react3.default.createElement("span", { style: { fontFamily: F.mono, fontSize: 11, color: C.paperDim } }, error)), job && /* @__PURE__ */ import_react3.default.createElement("div", { className: "flex items-center gap-3 px-4 py-3 rounded", style: { background: C.panel, border: `1px solid ${C.borderSoft}` } }, /* @__PURE__ */ import_react3.default.createElement(LoaderCircle, { size: 14, color: C.amber, className: "animate-spin" }), /* @__PURE__ */ import_react3.default.createElement("span", { style: { fontFamily: F.body, fontSize: 12, color: C.paperDim } }, job.message)), /* @__PURE__ */ import_react3.default.createElement("div", { className: "flex flex-col gap-3 px-4 py-3.5 rounded", style: { background: C.panel, border: `1px solid ${C.borderSoft}` } }, /* @__PURE__ */ import_react3.default.createElement("span", { style: { fontFamily: F.mono, fontSize: 10, color: C.amber, letterSpacing: "0.08em" } }, "FINISHING OPTIONS"), /* @__PURE__ */ import_react3.default.createElement("div", { className: "flex flex-wrap items-center gap-x-5 gap-y-3" }, /* @__PURE__ */ import_react3.default.createElement("label", { className: "flex items-center gap-2", style: { cursor: "pointer" } }, /* @__PURE__ */ import_react3.default.createElement("input", { type: "checkbox", checked: finishing.add_music, onChange: (e) => setFinishing({ ...finishing, add_music: e.target.checked }), style: { accentColor: C.tally } }), /* @__PURE__ */ import_react3.default.createElement("span", { style: { fontFamily: F.body, fontSize: 12, color: C.paper } }, "Tambah musik")), finishing.add_music && /* @__PURE__ */ import_react3.default.createElement("label", { className: "flex items-center gap-2" }, /* @__PURE__ */ import_react3.default.createElement("span", { style: { fontFamily: F.mono, fontSize: 10, color: C.paperFaint } }, "Mood"), /* @__PURE__ */ import_react3.default.createElement("select", { value: finishing.music_mood, onChange: (e) => setFinishing({ ...finishing, music_mood: e.target.value }), style: { fontFamily: F.mono, fontSize: 11, color: C.paper, background: C.panelRaised, border: `1px solid ${C.border}`, borderRadius: 3, padding: "3px 6px", outline: "none" } }, ["calm", "tense", "sad", "epic", "upbeat"].map((m) => /* @__PURE__ */ import_react3.default.createElement("option", { key: m, value: m }, m)))), /* @__PURE__ */ import_react3.default.createElement("label", { className: "flex items-center gap-2" }, /* @__PURE__ */ import_react3.default.createElement("span", { style: { fontFamily: F.mono, fontSize: 10, color: C.paperFaint } }, "Gaya caption"), /* @__PURE__ */ import_react3.default.createElement("select", { value: finishing.caption_style, onChange: (e) => setFinishing({ ...finishing, caption_style: e.target.value }), style: { fontFamily: F.mono, fontSize: 11, color: C.paper, background: C.panelRaised, border: `1px solid ${C.border}`, borderRadius: 3, padding: "3px 6px", outline: "none" } }, /* @__PURE__ */ import_react3.default.createElement("option", { value: "bold-white-bottom" }, "Bold White Bottom"), /* @__PURE__ */ import_react3.default.createElement("option", { value: "minimal-white-center" }, "Minimal White Center"), /* @__PURE__ */ import_react3.default.createElement("option", { value: "news-style-lower-third" }, "News Lower Third"))), /* @__PURE__ */ import_react3.default.createElement("label", { className: "flex items-center gap-2" }, /* @__PURE__ */ import_react3.default.createElement("span", { style: { fontFamily: F.mono, fontSize: 10, color: C.paperFaint } }, "Transisi"), /* @__PURE__ */ import_react3.default.createElement("select", { value: finishing.transition_style, onChange: (e) => setFinishing({ ...finishing, transition_style: e.target.value }), style: { fontFamily: F.mono, fontSize: 11, color: C.paper, background: C.panelRaised, border: `1px solid ${C.border}`, borderRadius: 3, padding: "3px 6px", outline: "none" } }, /* @__PURE__ */ import_react3.default.createElement("option", { value: "hard_cut" }, "Hard Cut"), /* @__PURE__ */ import_react3.default.createElement("option", { value: "crossfade" }, "Crossfade"), /* @__PURE__ */ import_react3.default.createElement("option", { value: "dip_to_black" }, "Dip to Black"), /* @__PURE__ */ import_react3.default.createElement("option", { value: "slide" }, "Slide"), /* @__PURE__ */ import_react3.default.createElement("option", { value: "zoom" }, "Zoom"))), /* @__PURE__ */ import_react3.default.createElement("label", { className: "flex items-center gap-2", style: { cursor: "pointer" } }, /* @__PURE__ */ import_react3.default.createElement("input", { type: "checkbox", checked: finishing.ken_burns, onChange: (e) => setFinishing({ ...finishing, ken_burns: e.target.checked }), style: { accentColor: C.tally } }), /* @__PURE__ */ import_react3.default.createElement("span", { style: { fontFamily: F.body, fontSize: 12, color: C.paper } }, "Ken Burns (zoom pelan)")), /* @__PURE__ */ import_react3.default.createElement("div", { className: "flex items-center gap-2" }, /* @__PURE__ */ import_react3.default.createElement("span", { style: { fontFamily: F.mono, fontSize: 10, color: C.paperFaint } }, "Aspect"), [["9:16", "TikTok 9:16"], ["16:9", "YouTube 16:9"], ["1:1", "IG 1:1"]].map(([v, l]) => /* @__PURE__ */ import_react3.default.createElement(
       "button",
       {
         key: v,

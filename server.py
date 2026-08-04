@@ -959,7 +959,8 @@ class TitleOverlay(BaseModel):
 
 
 class StickerOverlay(BaseModel):
-    """Sticker/gambar overlay manual (P1.4) — posisi relatif 0-1, scale, rotasi."""
+    """Sticker/gambar overlay manual (P1.4) — posisi relatif 0-1, scale, rotasi.
+    P3.1: keyframes = list {t, x?, y?, scale?, rotation?} -> animasi linear."""
     segment_index: int = 0
     image_path: str = ""          # path file hasil upload sticker
     x: float = 0.5                # 0-1 relatif lebar frame (0.5 = tengah)
@@ -968,6 +969,7 @@ class StickerOverlay(BaseModel):
     rotation: float = 0.0         # derajat
     start_offset: float = 0.0     # detik relatif ke awal segmen
     duration: float = 0.0         # 0 = sisa durasi segmen
+    keyframes: list[dict] = []    # P3.1: [{t, x?, y?, scale?, rotation?}]
 
 
 class TimelineExportRequest(BaseModel):
