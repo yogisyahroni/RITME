@@ -1213,6 +1213,67 @@ def test_aspect_p22():
             check(f"{aspect} crop center masih biru", blue > 0.8, f"blue {blue:.2f}")
 
 
+def test_speed_p21():
+    """P2.1 speed control — _timeline_to_stage5 mapping, render 2x (durasi setengah,
+    frame masih ada), audio atempo helper."""
+    import server as server_mod
+    from fastapi.testclient import TestClient
+    from moviepy import VideoFileClip
+    from pipeline.stage5_assembly import _speed_audio_preserve_pitch
+
+    # 1. mapping: speed=2 -> timeline window durasi / 2
+    clip = make_test_video(Path("cache") / "test" / "spd_base.mp4", "green", 4.0, size="360x640")
+    seg = server_mod.TimelineSegment(index=0, video_path=str(clip), narration_text="T",
+                                     duration=4.0, speed=2.0)
+    timed, footage = server_mod._timeline_to_stage5([seg])
+    check("speed 2x -> window 2s", abs(timed[0]["duration"] - 2.0) < 1e-6,
+          f"{timed[0]['duration']}")
+    check("speed field diteruskan", abs(timed[0]["speed"] - 2.0) < 1e-6, f"{timed[0]['speed']}")
+
+    # 2. speed clamp: 0.1 -> 0.25, 9 -> 4
+    timed2, _ = server_mod._timeline_to_stage5([
+        server_mod.TimelineSegment(index=0, video_path=str(clip), duration=4.0, speed=0.1),
+        server_mod.TimelineSegment(index=1, video_path=str(clip), duration=4.0, speed=9.0),
+    ])
+    check("speed clamp bawah", abs(timed2[0]["duration"] - 4.0 / 0.25) < 1e-6, f"{timed2[0]['duration']}")
+    check("speed clamp atas", abs(timed2[1]["duration"] - 4.0 / 4.0) < 1e-6, f"{timed2[1]['duration']}")
+
+    # 3. render preview 2x: total durasi ~ setengah (source 4s, speed 2x -> 2s)
+    clip = make_test_video(Path("cache") / "test" / "spd_base.mp4", "green", 4.0, size="360x640")
+    body = {
+        "segments": [{"index": 0, "video_path": str(clip), "narration_text": "T",
+                      "duration": 4.0, "start_trim": 0, "end_trim": 0, "speed": 2.0}],
+        "narration_audio_path": "", "output_name": "speed_preview",
+    }
+    with TestClient(server_mod.app) as client:
+        r = client.post("/api/timeline/preview", json=body)
+        check("preview speed 200", r.status_code == 200, f"got {r.status_code}: {r.text[:120]}")
+        if r.status_code == 200:
+            tmp = Path("cache") / "test" / "spd_out.mp4"
+            tmp.write_bytes(r.content)
+            with VideoFileClip(str(tmp)) as vc:
+                dur = vc.duration
+                fr = vc.get_frame(0.5)
+            check("durasi final ~2s (4/2)", abs(dur - 2.0) < 0.3, f"got {dur:.2f}")
+            green = fr[..., 1].mean()
+            check("frame masih isi (bukan hitam)", green > 100, f"green {green:.2f}")
+
+    # 4. audio atempo helper: bikin wav pendek, cek output wav ada + durasi setengah
+    import wave
+    import struct
+    wav_p = Path("cache") / "test" / "tone_1s.wav"
+    with wave.open(str(wav_p), "w") as w:
+        w.setnchannels(1); w.setsampwidth(2); w.setframerate(8000)
+        for i in range(8000):
+            w.writeframes(struct.pack("<h", int(8000 * (0.5 + 0.5 * (i % 400) / 400))))
+    res = _speed_audio_preserve_pitch(str(wav_p), 2.0)
+    check("atempo 2x -> file", res is not None and Path(res).exists(), f"{res}")
+    if res:
+        with wave.open(res, "r") as w2:
+            frames = w2.getnframes(); rate = w2.getframerate()
+        check("atempo durasi ~0.5s", abs(frames / rate - 0.5) < 0.1, f"{frames/rate:.2f}s")
+
+
 def main():
     which = set(sys.argv[1:])
     run_all = "--all" in which or len(which) == 0
@@ -1239,6 +1300,7 @@ def main():
         ("transition_p12", test_transition_p12),
         ("sticker_p14", test_sticker_p14),
         ("aspect_p22", test_aspect_p22),
+        ("speed_p21", test_speed_p21),
     ]
     if run_all or "--with-server" in which:
         tests.append(("server_render", test_server_render_endpoint))

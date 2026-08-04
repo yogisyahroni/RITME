@@ -414,6 +414,7 @@ function TimelineEditor({ narration, footageData, picks }) {
           duration: s.duration, start_trim: s.start_trim, end_trim: s.end_trim,
           keywords: s.keywords || [], audio_path: s.audio_path || "", words: s.words || [],
           filter: s.filter || "original",
+          speed: s.speed || 1.0,
         })),
         finishing,
         narration_meta: { template_name: narration?.template_name || "" },
@@ -496,6 +497,7 @@ function TimelineEditor({ narration, footageData, picks }) {
           audio_path: narration?.segment_audio_paths?.[s.index] || "",
           words: s.words || [],
           filter: s.filter || "original",
+          speed: s.speed || 1.0,
         })),
         narration_audio_path: narration?.audio_path || "",
         output_name: `ritme_${Date.now()}`,
@@ -576,7 +578,9 @@ function TimelineEditor({ narration, footageData, picks }) {
     a.click();
   };
 
-  const totalDuration = segments.reduce((a, s) => a + Math.max(s.duration - s.start_trim - s.end_trim, 0.5), 0);
+  const segDur = (s) => Math.max((s.duration || 0) - (s.start_trim || 0) - (s.end_trim || 0), 0.5) / (s.speed || 1.0);
+
+  const totalDuration = segments.reduce((a, s) => a + segDur(s), 0);
 
   // Posisi kumulatif tiap segmen (detik) — buat layout track
   const segStarts = [];
@@ -584,7 +588,7 @@ function TimelineEditor({ narration, footageData, picks }) {
     let acc = 0;
     for (const s of segments) {
       segStarts.push(acc);
-      acc += Math.max(s.duration - s.start_trim - s.end_trim, 0.5);
+      acc += segDur(s);
     }
   }
 
@@ -661,7 +665,7 @@ function TimelineEditor({ narration, footageData, picks }) {
           <span style={{ fontFamily: F.mono, fontSize: 10, color: C.paperFaint, letterSpacing: "0.08em" }}>VIDEO</span>
           <div className="relative rounded" style={{ height: 64, width: timelineW, background: C.panelRaised, border: `1px solid ${C.borderSoft}`, borderRadius: 4 }}>
             {segments.map((s, i) => {
-              const dur = Math.max(s.duration - s.start_trim - s.end_trim, 0.5);
+              const dur = segDur(s);
               const cands = footageData?.[String(s.index)]?.candidates || [];
               const curCandIdx = cands.findIndex(c => c.video_path === s.video_path);
               const thumb = cands[curCandIdx >= 0 ? curCandIdx : (picks?.[s.index] ?? 0)]?.thumbnail_url;
@@ -739,7 +743,7 @@ function TimelineEditor({ narration, footageData, picks }) {
           <span style={{ fontFamily: F.mono, fontSize: 10, color: C.paperFaint, letterSpacing: "0.08em" }}>CAPTION</span>
           <div className="relative rounded" style={{ height: 30, width: timelineW, background: C.panelRaised, border: `1px solid ${C.borderSoft}`, borderRadius: 4 }}>
             {segments.map((s, i) => {
-              const dur = Math.max(s.duration - s.start_trim - s.end_trim, 0.5);
+              const dur = segDur(s);
               return (
                 <div key={`cap-${s.index}-${i}`} className="absolute rounded flex items-center px-1.5"
                   style={{ left: segStarts[i] * pxPerSec, width: Math.max(dur * pxPerSec - 3, 30), top: 5, height: 20, background: `${C.caption}26`, border: `1px solid ${C.caption}55`, overflow: "hidden" }}>
@@ -820,6 +824,20 @@ function TimelineEditor({ narration, footageData, picks }) {
                         border: `1px solid ${(s.filter || "original") === v ? C.amber : C.borderSoft}`,
                         color: (s.filter || "original") === v ? C.amber : C.paperDim }}>{l}</button>
                   ))}
+                </div>
+                {/* P2.1: speed control per clip */}
+                <div className="flex items-center gap-2 flex-wrap" style={{ marginTop: 5 }}>
+                  <span style={{ fontFamily: F.mono, fontSize: 9, color: C.paperFaint }}>SPEED</span>
+                  {[0.5, 0.75, 1, 1.5, 2].map(v => (
+                    <button key={v} onClick={() => updateSegment(i, { speed: v })}
+                      style={{ fontFamily: F.mono, fontSize: 9, padding: "1px 7px", borderRadius: 9, cursor: "pointer",
+                        background: (s.speed || 1) === v ? C.cyan + "33" : C.panelRaised,
+                        border: `1px solid ${(s.speed || 1) === v ? C.cyan : C.borderSoft}`,
+                        color: (s.speed || 1) === v ? C.cyan : C.paperDim }}>{v === 1 ? "1x" : `${v}x`}</button>
+                  ))}
+                  <span style={{ fontFamily: F.mono, fontSize: 9, color: C.paperFaint }}>
+                    {segDur(s).toFixed(1)}s {s.speed && s.speed !== 1 ? `(${(s.speed).toFixed(2)}x)` : ""}
+                  </span>
                 </div>
               </div>
               <div className="flex items-center gap-2 flex-shrink-0">

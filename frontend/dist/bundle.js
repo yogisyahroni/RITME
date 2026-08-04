@@ -24412,7 +24412,8 @@
             keywords: s.keywords || [],
             audio_path: s.audio_path || "",
             words: s.words || [],
-            filter: s.filter || "original"
+            filter: s.filter || "original",
+            speed: s.speed || 1
           })),
           finishing,
           narration_meta: { template_name: narration?.template_name || "" },
@@ -24509,7 +24510,8 @@
             keywords: s.keywords || [],
             audio_path: narration?.segment_audio_paths?.[s.index] || "",
             words: s.words || [],
-            filter: s.filter || "original"
+            filter: s.filter || "original",
+            speed: s.speed || 1
           })),
           narration_audio_path: narration?.audio_path || "",
           output_name: `ritme_${Date.now()}`,
@@ -24609,13 +24611,14 @@
       a.download = "ritme_timeline.mp4";
       a.click();
     };
-    const totalDuration = segments.reduce((a, s) => a + Math.max(s.duration - s.start_trim - s.end_trim, 0.5), 0);
+    const segDur = (s) => Math.max((s.duration || 0) - (s.start_trim || 0) - (s.end_trim || 0), 0.5) / (s.speed || 1);
+    const totalDuration = segments.reduce((a, s) => a + segDur(s), 0);
     const segStarts = [];
     {
       let acc = 0;
       for (const s of segments) {
         segStarts.push(acc);
-        acc += Math.max(s.duration - s.start_trim - s.end_trim, 0.5);
+        acc += segDur(s);
       }
     }
     const colors = [C.tally, "#6FE7DD", "#E8A33D", "#7FB88A", "#8B5CF6", "#F472B6", "#FBBF24", "#34D399"];
@@ -24651,7 +24654,7 @@
       if (e.target.files?.[0]) importProject(e.target.files[0]);
       e.target.value = "";
     } }), /* @__PURE__ */ import_react3.default.createElement(IconButton, { onClick: downloadSrt, icon: FileText, disabled: segments.length === 0, title: "Download subtitle (.srt)", color: C.caption }))), restoreNotice && /* @__PURE__ */ import_react3.default.createElement("div", { className: "flex items-center gap-3 px-4 py-2.5 rounded", style: { background: "#241D12", border: `1px solid ${C.amber}55` } }, /* @__PURE__ */ import_react3.default.createElement(Info, { size: 14, color: C.amber }), /* @__PURE__ */ import_react3.default.createElement("span", { style: { fontFamily: F.body, fontSize: 12, color: C.paperDim, flex: 1 } }, "Project tersimpan otomatis berhasil dipulihkan (edit terakhir tetap tersimpan di browser ini)."), /* @__PURE__ */ import_react3.default.createElement("button", { onClick: () => setRestoreNotice(false), style: { fontFamily: F.mono, fontSize: 11, color: C.amber, background: "none", border: "none", cursor: "pointer", padding: 0 } }, "OK")), /* @__PURE__ */ import_react3.default.createElement("div", { className: "flex flex-col gap-3 rounded p-4", style: { background: C.panel, border: `1px solid ${C.borderSoft}`, overflowX: "auto" } }, /* @__PURE__ */ import_react3.default.createElement("div", { className: "relative", style: { height: 18, width: timelineW } }, ticks.map((t) => /* @__PURE__ */ import_react3.default.createElement("div", { key: t, className: "absolute flex flex-col", style: { left: t * pxPerSec } }, /* @__PURE__ */ import_react3.default.createElement("div", { style: { width: 1, height: 6, background: C.border } }), /* @__PURE__ */ import_react3.default.createElement("span", { style: { fontFamily: F.mono, fontSize: 9, color: C.paperFaint, marginTop: 1 } }, Math.floor(t / 60), ":", String(Math.round(t % 60)).padStart(2, "0"))))), /* @__PURE__ */ import_react3.default.createElement("div", null, /* @__PURE__ */ import_react3.default.createElement("span", { style: { fontFamily: F.mono, fontSize: 10, color: C.paperFaint, letterSpacing: "0.08em" } }, "VIDEO"), /* @__PURE__ */ import_react3.default.createElement("div", { className: "relative rounded", style: { height: 64, width: timelineW, background: C.panelRaised, border: `1px solid ${C.borderSoft}`, borderRadius: 4 } }, segments.map((s, i) => {
-      const dur = Math.max(s.duration - s.start_trim - s.end_trim, 0.5);
+      const dur = segDur(s);
       const cands = footageData?.[String(s.index)]?.candidates || [];
       const curCandIdx = cands.findIndex((c) => c.video_path === s.video_path);
       const thumb = cands[curCandIdx >= 0 ? curCandIdx : picks?.[s.index] ?? 0]?.thumbnail_url;
@@ -24719,7 +24722,7 @@
       },
       ["calm", "tense", "sad", "epic", "upbeat"].map((m) => /* @__PURE__ */ import_react3.default.createElement("option", { key: m, value: m }, m))
     ))), /* @__PURE__ */ import_react3.default.createElement("div", null, /* @__PURE__ */ import_react3.default.createElement("span", { style: { fontFamily: F.mono, fontSize: 10, color: C.paperFaint, letterSpacing: "0.08em" } }, "CAPTION"), /* @__PURE__ */ import_react3.default.createElement("div", { className: "relative rounded", style: { height: 30, width: timelineW, background: C.panelRaised, border: `1px solid ${C.borderSoft}`, borderRadius: 4 } }, segments.map((s, i) => {
-      const dur = Math.max(s.duration - s.start_trim - s.end_trim, 0.5);
+      const dur = segDur(s);
       return /* @__PURE__ */ import_react3.default.createElement(
         "div",
         {
@@ -24794,7 +24797,24 @@
           }
         },
         l
-      )))),
+      ))), /* @__PURE__ */ import_react3.default.createElement("div", { className: "flex items-center gap-2 flex-wrap", style: { marginTop: 5 } }, /* @__PURE__ */ import_react3.default.createElement("span", { style: { fontFamily: F.mono, fontSize: 9, color: C.paperFaint } }, "SPEED"), [0.5, 0.75, 1, 1.5, 2].map((v) => /* @__PURE__ */ import_react3.default.createElement(
+        "button",
+        {
+          key: v,
+          onClick: () => updateSegment(i, { speed: v }),
+          style: {
+            fontFamily: F.mono,
+            fontSize: 9,
+            padding: "1px 7px",
+            borderRadius: 9,
+            cursor: "pointer",
+            background: (s.speed || 1) === v ? C.cyan + "33" : C.panelRaised,
+            border: `1px solid ${(s.speed || 1) === v ? C.cyan : C.borderSoft}`,
+            color: (s.speed || 1) === v ? C.cyan : C.paperDim
+          }
+        },
+        v === 1 ? "1x" : `${v}x`
+      )), /* @__PURE__ */ import_react3.default.createElement("span", { style: { fontFamily: F.mono, fontSize: 9, color: C.paperFaint } }, segDur(s).toFixed(1), "s ", s.speed && s.speed !== 1 ? `(${s.speed.toFixed(2)}x)` : ""))),
       /* @__PURE__ */ import_react3.default.createElement("div", { className: "flex items-center gap-2 flex-shrink-0" }, /* @__PURE__ */ import_react3.default.createElement("div", { style: { display: "flex", alignItems: "center", gap: 4 } }, /* @__PURE__ */ import_react3.default.createElement("span", { style: { fontFamily: F.mono, fontSize: 9, color: C.paperFaint } }, "Start"), /* @__PURE__ */ import_react3.default.createElement("input", { type: "number", min: 0, max: Math.max(s.duration - 0.5, 0), step: 0.1, value: s.start_trim, onChange: (e) => addTrim(i, "start", parseFloat(e.target.value) || 0), style: { width: 42, fontFamily: F.mono, fontSize: 10, color: C.paper, background: C.panelRaised, border: `1px solid ${C.borderSoft}`, borderRadius: 3, padding: "2px 4px", outline: "none", textAlign: "center" } }), /* @__PURE__ */ import_react3.default.createElement("span", { style: { fontFamily: F.mono, fontSize: 9, color: C.paperFaint } }, "End"), /* @__PURE__ */ import_react3.default.createElement("input", { type: "number", min: 0, max: Math.max(s.duration - 0.5, 0), step: 0.1, value: s.end_trim, onChange: (e) => addTrim(i, "end", parseFloat(e.target.value) || 0), style: { width: 42, fontFamily: F.mono, fontSize: 10, color: C.paper, background: C.panelRaised, border: `1px solid ${C.borderSoft}`, borderRadius: 3, padding: "2px 4px", outline: "none", textAlign: "center" } }))),
       /* @__PURE__ */ import_react3.default.createElement("span", { style: { fontFamily: F.mono, fontSize: 11, color: C.paperFaint, width: 40, textAlign: "right", flexShrink: 0 } }, fmt(Math.max(s.duration - s.start_trim - s.end_trim, 0.5))),
       /* @__PURE__ */ import_react3.default.createElement("div", { className: "flex items-center gap-1 flex-shrink-0" }, narration?.segment_audio_paths?.[s.index] && /* @__PURE__ */ import_react3.default.createElement(
