@@ -944,6 +944,18 @@ class TimelineSegment(BaseModel):
     audio_path: str = ""     # Fase 3.0: per-segment narration audio
     words: list[dict] = []   # Fase 3.4: per-word subtitle timing (karaoke)
 
+class TitleOverlay(BaseModel):
+    """Teks/title manual di atas footage (P1.1) — 9 posisi, pill bg opsional."""
+    segment_index: int = 0
+    text: str = ""
+    start_offset: float = 0.0   # detik relatif ke awal segmen
+    duration: float = 3.0
+    position: str = "top-center"  # 9 preset: top-left..bottom-right
+    font_size: int = 48
+    color: str = "#FFFFFF"
+    background_pill: bool = False
+
+
 class TimelineExportRequest(BaseModel):
     segments: list[TimelineSegment]
     narration_audio_path: str = ""
@@ -958,6 +970,8 @@ class TimelineExportRequest(BaseModel):
     # --- Watermark (Fase 5.2): logo overlay ---
     watermark_path: str | None = None
     watermark_pos: str = "bottom-right"
+    # --- Text/title overlay manual (P1.1) ---
+    title_overlays: list[TitleOverlay] = []
 
 
 class BatchItem(BaseModel):
@@ -972,6 +986,7 @@ class BatchItem(BaseModel):
     ken_burns: bool = False
     watermark_path: str | None = None
     watermark_pos: str = "bottom-right"
+    title_overlays: list[TitleOverlay] = []
 
 
 class BatchRenderRequest(BaseModel):
@@ -1009,6 +1024,7 @@ def batch_render(req: BatchRenderRequest):
                     transition_style=item.transition_style,
                     ken_burns=item.ken_burns,
                     watermark_path=item.watermark_path, watermark_pos=item.watermark_pos,
+                    title_overlays=[o.model_dump() for o in item.title_overlays],
                 )
                 entry["path"] = out
                 rel = str(Path(out).relative_to(OUTPUT_DIR))
@@ -1102,6 +1118,7 @@ def timeline_export(req: TimelineExportRequest):
         transition_style=req.transition_style,
         ken_burns=req.ken_burns,
         watermark_path=req.watermark_path, watermark_pos=req.watermark_pos,
+        title_overlays=[o.model_dump() for o in req.title_overlays],
     )
     if not os.path.exists(out_path):
         raise HTTPException(500, "Render selesai tapi file output tidak ditemukan")
@@ -1129,6 +1146,7 @@ def timeline_preview(req: TimelineExportRequest):
         resolution=_preview_resolution(),
         ffmpeg_preset="ultrafast",
         watermark_path=req.watermark_path, watermark_pos=req.watermark_pos,
+        title_overlays=[o.model_dump() for o in req.title_overlays],
     )
     if not os.path.exists(out_path):
         raise HTTPException(500, "Preview generation failed")
@@ -1379,6 +1397,7 @@ class ProjectSaveRequest(BaseModel):
     finishing: dict = {}
     narration_meta: dict = {}
     template_name: str = ""
+    title_overlays: list[TitleOverlay] = []
 
 
 def _project_meta(pid: str, name: str, segments: list[TimelineSegment],
@@ -1439,6 +1458,7 @@ def project_save(req: ProjectSaveRequest):
         "segments": [s.model_dump() for s in req.segments],
         "finishing": req.finishing,
         "narration_meta": req.narration_meta,
+        "title_overlays": [o.model_dump() for o in req.title_overlays],
         "saved_at": datetime.now().isoformat(timespec="seconds"),
     }
     (folder / "project.json").write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
@@ -1491,6 +1511,7 @@ def project_update(pid: str, req: ProjectSaveRequest):
         "segments": [s.model_dump() for s in req.segments],
         "finishing": req.finishing,
         "narration_meta": req.narration_meta,
+        "title_overlays": [o.model_dump() for o in req.title_overlays],
         "created_at": old.get("created_at") or old.get("saved_at"),
         "saved_at": datetime.now().isoformat(timespec="seconds"),
     }

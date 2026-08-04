@@ -110,6 +110,15 @@ function TimelineEditor({ narration, footageData, picks }) {
   const [saveName, setSaveName] = useState("");
   const [saveBusy, setSaveBusy] = useState(false);
   const [saveMsg, setSaveMsg] = useState("");
+  // P1.1: text/title overlay manual per segmen
+  const [titleOverlays, setTitleOverlays] = useState([]);
+
+  const TITLE_POSITIONS = [
+    ["top-left", "Atas Kiri"], ["top-center", "Atas Tengah"], ["top-right", "Atas Kanan"],
+    ["center-left", "Tengah Kiri"], ["center", "Tengah"], ["center-right", "Tengah Kanan"],
+    ["bottom-left", "Bawah Kiri"], ["bottom-center", "Bawah Tengah"], ["bottom-right", "Bawah Kanan"],
+  ];
+  const TITLE_COLORS = ["#FFFFFF", "#FFD400", "#FF8A3D", "#6FE7DD", "#7FB88A", "#E8542E", "#E8A33D", "#C084FC"];
 
   const pxPerSec = 28 * zoom;
 
@@ -122,6 +131,7 @@ function TimelineEditor({ narration, footageData, picks }) {
       if (proj?.segments?.length) {
         setSegments(proj.segments);
         setFinishing(f => ({ ...f, ...(proj.finishing || {}) }));
+        setTitleOverlays(proj.title_overlays || []);
         setRestoreNotice(true);
         restoredRef.current = true;
       }
@@ -153,11 +163,11 @@ function TimelineEditor({ narration, footageData, picks }) {
     if (!segments.length) return;
     const t = setTimeout(() => {
       try {
-        localStorage.setItem(AUDIO_KEY, JSON.stringify({ segments, finishing, savedAt: Date.now() }));
+        localStorage.setItem(AUDIO_KEY, JSON.stringify({ segments, finishing, titleOverlays, savedAt: Date.now() }));
       } catch { /* quota — abaikan */ }
     }, 800);
     return () => clearTimeout(t);
-  }, [segments, finishing]);
+  }, [segments, finishing, titleOverlays]);
 
   // Keyboard shortcuts: Ctrl+Z/Y undo-redo, Delete hapus, S split, Space play/pause
   useEffect(() => {
@@ -314,7 +324,7 @@ function TimelineEditor({ narration, footageData, picks }) {
   // Fase 4: Save/Load project + SRT + audio preview per segmen
   const exportProject = () => {
     const data = {
-      segments, finishing, savedAt: Date.now(),
+      segments, finishing, titleOverlays, savedAt: Date.now(),
       narrationMeta: { template_name: narration?.template_name || "" },
     };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
@@ -333,6 +343,7 @@ function TimelineEditor({ narration, footageData, picks }) {
         pushHistory();
         setSegments(data.segments);
         setFinishing(f => ({ ...f, ...(data.finishing || {}) }));
+        setTitleOverlays(data.title_overlays || []);
         setRestoreNotice(false);
         setError(null);
       } catch { setError("File project tidak valid (bukan .ritme.json)"); }
@@ -390,6 +401,7 @@ function TimelineEditor({ narration, footageData, picks }) {
         finishing,
         narration_meta: { template_name: narration?.template_name || "" },
         template_name: narration?.template_name || "",
+        title_overlays: titleOverlays,
       };
       const res = await fetch("/api/projects", {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
@@ -401,6 +413,21 @@ function TimelineEditor({ narration, footageData, picks }) {
       setTimeout(() => setSaveMsg(""), 3000);
     } catch (e) { setError(`Gagal simpan ke library: ${e}`); }
     finally { setSaveBusy(false); }
+  };
+
+  // P1.1: text/title overlay manual — CRUD
+  const addOverlay = (i) => {
+    setTitleOverlays(prev => [...prev, {
+      id: `ov-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      segment_index: i, text: "Judul", start_offset: 0, duration: 3,
+      position: "top-center", font_size: 48, color: "#FFFFFF", background_pill: false,
+    }]);
+  };
+  const updateOverlay = (id, patch) => {
+    setTitleOverlays(prev => prev.map(o => o.id === id ? { ...o, ...patch } : o));
+  };
+  const removeOverlay = (id) => {
+    setTitleOverlays(prev => prev.filter(o => o.id !== id));
   };
 
   const exportTimeline = async (preview = false) => {
@@ -430,6 +457,11 @@ function TimelineEditor({ narration, footageData, picks }) {
         ken_burns: finishing.ken_burns,
         watermark_path: finishing.watermark_path || null,
         watermark_pos: finishing.watermark_pos,
+        title_overlays: titleOverlays.map(o => ({
+          segment_index: o.segment_index, text: o.text, start_offset: o.start_offset,
+          duration: o.duration, position: o.position, font_size: o.font_size,
+          color: o.color, background_pill: o.background_pill,
+        })),
       };
       const resp = await fetch(endpoint, {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)
@@ -661,51 +693,130 @@ function TimelineEditor({ narration, footageData, picks }) {
             })}
           </div>
         </div>
+
+        {/* Track TEXT (P1.1) */}
+        <div>
+          <span style={{ fontFamily: F.mono, fontSize: 10, color: C.paperFaint, letterSpacing: "0.08em" }}>TEXT</span>
+          <div className="relative rounded" style={{ height: 30, width: timelineW, background: C.panelRaised, border: `1px solid ${C.borderSoft}`, borderRadius: 4 }}>
+            {titleOverlays.map(o => {
+              const left = (segStarts[o.segment_index] || 0) + (o.start_offset || 0);
+              return (
+                <div key={o.id} className="absolute rounded flex items-center px-1.5" title={`Teks: ${o.text}`}
+                  onClick={() => setSelectedIdx(o.segment_index)}
+                  style={{ left: left * pxPerSec, width: Math.max((o.duration || 3) * pxPerSec - 3, 40), top: 5, height: 20, background: `${C.amber}26`, border: `1px solid ${C.amber}55`, overflow: "hidden", cursor: "pointer" }}>
+                  <span style={{ fontFamily: F.mono, fontSize: 8.5, color: C.amber, whiteSpace: "nowrap" }}>T: {String(o.text || "").slice(0, 10)}</span>
+                </div>
+              );
+            })}
+            {titleOverlays.length === 0 && <span style={{ fontFamily: F.body, fontSize: 9.5, color: C.paperFaint, position: "absolute", top: 7, left: 10 }}>Teks manual (judul, lower-third) — klik "+ TEKS" di detail segmen</span>}
+          </div>
+        </div>
       </div>
 
       {/* ===== Detail panel per segmen (list) ===== */}
       <div className="flex flex-col gap-2">
         <span style={{ fontFamily: F.mono, fontSize: 10, color: C.paperFaint, letterSpacing: "0.08em", marginBottom: 4 }}>DETAIL SEGMEN</span>
         {segments.map((s, i) => (
-          <div key={`d-${s.index}-${i}`} onClick={() => setSelectedIdx(selectedIdx === i ? null : i)}
-            className="flex items-center gap-3 px-4 py-3 rounded"
-            style={{ background: selectedIdx === i ? "#26221A" : C.panel, border: `1px solid ${selectedIdx === i ? C.amber + "66" : C.borderSoft}`, cursor: "pointer" }}>
-            <div className="flex items-center justify-center rounded-full" style={{ width: 26, height: 26, background: C.panelRaised, border: `1px solid ${C.border}`, flexShrink: 0 }}>
-              <span style={{ fontFamily: F.mono, fontSize: 11, color: C.cyan, fontWeight: 600 }}>{i + 1}</span>
-            </div>
-            <GripVertical size={14} color={C.paperFaint} style={{ flexShrink: 0, cursor: "grab" }} />
-            <div style={{ width: 50, height: 30, background: C.panelRaised, borderRadius: 3, flexShrink: 0, overflow: "hidden" }}>
-              {(() => { const cand = footageData?.[String(s.index)]?.candidates?.[picks?.[s.index] ?? 0]; const thumb = cand?.thumbnail_url; return thumb ? <img src={thumb} style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <Film size={16} color={C.paperFaint} style={{ margin: "7px auto", display: "block" }} />; })()}
-            </div>
-            <div className="flex-1 flex flex-col" style={{ minWidth: 0 }}>
-              <span style={{ fontFamily: F.mono, fontSize: 9.5, color: C.paperFaint, marginBottom: 3 }}>Teks narasi (edit, lalu Sinkronkan Subtitle)</span>
-              <textarea
-                value={s.narration_text}
-                onChange={e => updateSegment(i, { narration_text: e.target.value })}
-                rows={2}
-                style={{ width: "100%", fontFamily: F.body, fontSize: 11.5, color: C.paper, background: C.panelRaised, border: `1px solid ${C.borderSoft}`, borderRadius: 3, padding: "4px 6px", outline: "none", resize: "vertical", lineHeight: 1.45 }}
-              />
-              <span style={{ fontFamily: F.mono, fontSize: 9.5, color: C.paperFaint, marginTop: 3 }}>{s.keywords?.join(", ")}</span>
-            </div>
-            <div className="flex items-center gap-2 flex-shrink-0">
-              <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                <span style={{ fontFamily: F.mono, fontSize: 9, color: C.paperFaint }}>Start</span>
-                <input type="number" min={0} max={Math.max(s.duration - 0.5, 0)} step={0.1} value={s.start_trim} onChange={e => addTrim(i, "start", parseFloat(e.target.value) || 0)} style={{ width: 42, fontFamily: F.mono, fontSize: 10, color: C.paper, background: C.panelRaised, border: `1px solid ${C.borderSoft}`, borderRadius: 3, padding: "2px 4px", outline: "none", textAlign: "center" }} />
-                <span style={{ fontFamily: F.mono, fontSize: 9, color: C.paperFaint }}>End</span>
-                <input type="number" min={0} max={Math.max(s.duration - 0.5, 0)} step={0.1} value={s.end_trim} onChange={e => addTrim(i, "end", parseFloat(e.target.value) || 0)} style={{ width: 42, fontFamily: F.mono, fontSize: 10, color: C.paper, background: C.panelRaised, border: `1px solid ${C.borderSoft}`, borderRadius: 3, padding: "2px 4px", outline: "none", textAlign: "center" }} />
+          <div key={`d-${s.index}-${i}`} className="flex flex-col gap-2">
+            <div onClick={() => setSelectedIdx(selectedIdx === i ? null : i)}
+              className="flex items-center gap-3 px-4 py-3 rounded"
+              style={{ background: selectedIdx === i ? "#26221A" : C.panel, border: `1px solid ${selectedIdx === i ? C.amber + "66" : C.borderSoft}`, cursor: "pointer" }}>
+              <div className="flex items-center justify-center rounded-full" style={{ width: 26, height: 26, background: C.panelRaised, border: `1px solid ${C.border}`, flexShrink: 0 }}>
+                <span style={{ fontFamily: F.mono, fontSize: 11, color: C.cyan, fontWeight: 600 }}>{i + 1}</span>
+              </div>
+              <GripVertical size={14} color={C.paperFaint} style={{ flexShrink: 0, cursor: "grab" }} />
+              <div style={{ width: 50, height: 30, background: C.panelRaised, borderRadius: 3, flexShrink: 0, overflow: "hidden" }}>
+                {(() => { const cand = footageData?.[String(s.index)]?.candidates?.[picks?.[s.index] ?? 0]; const thumb = cand?.thumbnail_url; return thumb ? <img src={thumb} style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <Film size={16} color={C.paperFaint} style={{ margin: "7px auto", display: "block" }} />; })()}
+              </div>
+              <div className="flex-1 flex flex-col" style={{ minWidth: 0 }}>
+                <span style={{ fontFamily: F.mono, fontSize: 9.5, color: C.paperFaint, marginBottom: 3 }}>Teks narasi (edit, lalu Sinkronkan Subtitle)</span>
+                <textarea
+                  value={s.narration_text}
+                  onChange={e => updateSegment(i, { narration_text: e.target.value })}
+                  rows={2}
+                  style={{ width: "100%", fontFamily: F.body, fontSize: 11.5, color: C.paper, background: C.panelRaised, border: `1px solid ${C.borderSoft}`, borderRadius: 3, padding: "4px 6px", outline: "none", resize: "vertical", lineHeight: 1.45 }}
+                />
+                <span style={{ fontFamily: F.mono, fontSize: 9.5, color: C.paperFaint, marginTop: 3 }}>{s.keywords?.join(", ")}</span>
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                  <span style={{ fontFamily: F.mono, fontSize: 9, color: C.paperFaint }}>Start</span>
+                  <input type="number" min={0} max={Math.max(s.duration - 0.5, 0)} step={0.1} value={s.start_trim} onChange={e => addTrim(i, "start", parseFloat(e.target.value) || 0)} style={{ width: 42, fontFamily: F.mono, fontSize: 10, color: C.paper, background: C.panelRaised, border: `1px solid ${C.borderSoft}`, borderRadius: 3, padding: "2px 4px", outline: "none", textAlign: "center" }} />
+                  <span style={{ fontFamily: F.mono, fontSize: 9, color: C.paperFaint }}>End</span>
+                  <input type="number" min={0} max={Math.max(s.duration - 0.5, 0)} step={0.1} value={s.end_trim} onChange={e => addTrim(i, "end", parseFloat(e.target.value) || 0)} style={{ width: 42, fontFamily: F.mono, fontSize: 10, color: C.paper, background: C.panelRaised, border: `1px solid ${C.borderSoft}`, borderRadius: 3, padding: "2px 4px", outline: "none", textAlign: "center" }} />
+                </div>
+              </div>
+              <span style={{ fontFamily: F.mono, fontSize: 11, color: C.paperFaint, width: 40, textAlign: "right", flexShrink: 0 }}>{fmt(Math.max(s.duration - s.start_trim - s.end_trim, 0.5))}</span>
+              <div className="flex items-center gap-1 flex-shrink-0">
+                {narration?.segment_audio_paths?.[s.index] && (
+                  <IconButton onClick={e => { e.stopPropagation(); toggleSegAudio(i); }} icon={playingAudio === i ? VolumeX : Volume2}
+                    title={playingAudio === i ? "Hentikan audio" : "Preview narasi segmen ini"} color={playingAudio === i ? C.cyan : C.paperDim} />
+                )}
+                <IconButton onClick={e => { e.stopPropagation(); splitSegment(i); }} icon={Scissors} title="Split" color={C.amber} />
+                <IconButton onClick={e => { e.stopPropagation(); moveSegment(i, -1); }} icon={ArrowUp} disabled={i === 0} title="Naik" />
+                <IconButton onClick={e => { e.stopPropagation(); moveSegment(i, 1); }} icon={ArrowDown} disabled={i === segments.length - 1} title="Turun" />
+                {segments.length > 1 && <IconButton onClick={e => { e.stopPropagation(); removeSegment(i); }} icon={Trash2} title="Hapus" color={C.red} />}
               </div>
             </div>
-            <span style={{ fontFamily: F.mono, fontSize: 11, color: C.paperFaint, width: 40, textAlign: "right", flexShrink: 0 }}>{fmt(Math.max(s.duration - s.start_trim - s.end_trim, 0.5))}</span>
-            <div className="flex items-center gap-1 flex-shrink-0">
-              {narration?.segment_audio_paths?.[s.index] && (
-                <IconButton onClick={e => { e.stopPropagation(); toggleSegAudio(i); }} icon={playingAudio === i ? VolumeX : Volume2}
-                  title={playingAudio === i ? "Hentikan audio" : "Preview narasi segmen ini"} color={playingAudio === i ? C.cyan : C.paperDim} />
-              )}
-              <IconButton onClick={e => { e.stopPropagation(); splitSegment(i); }} icon={Scissors} title="Split" color={C.amber} />
-              <IconButton onClick={e => { e.stopPropagation(); moveSegment(i, -1); }} icon={ArrowUp} disabled={i === 0} title="Naik" />
-              <IconButton onClick={e => { e.stopPropagation(); moveSegment(i, 1); }} icon={ArrowDown} disabled={i === segments.length - 1} title="Turun" />
-              {segments.length > 1 && <IconButton onClick={e => { e.stopPropagation(); removeSegment(i); }} icon={Trash2} title="Hapus" color={C.red} />}
-            </div>
+            {/* P1.1: editor teks overlay per segmen */}
+            {selectedIdx === i && (
+              <div className="flex flex-col gap-2 px-4 py-3 rounded" style={{ background: C.panelRaised, border: `1px dashed ${C.border}` }}>
+                <div className="flex items-center justify-between">
+                  <span style={{ fontFamily: F.mono, fontSize: 10, color: C.amber, letterSpacing: "0.08em" }}>TEKS OVERLAY (judul · lower-third · callout)</span>
+                  <button onClick={() => addOverlay(i)} className="flex items-center gap-1 px-2.5 py-1 rounded"
+                    style={{ background: "rgba(232,163,61,0.12)", border: `1px solid ${C.amber}66`, color: C.amber, fontFamily: F.mono, fontSize: 10, cursor: "pointer" }}>
+                    + TEKS
+                  </button>
+                </div>
+                {titleOverlays.filter(o => o.segment_index === i).length === 0 && (
+                  <span style={{ fontFamily: F.body, fontSize: 11, color: C.paperFaint }}>Belum ada teks di segmen ini — klik "+ TEKS" untuk tambah judul/lower-third.</span>
+                )}
+                {titleOverlays.filter(o => o.segment_index === i).map(o => (
+                  <div key={o.id} className="flex flex-col gap-2 rounded p-2.5" style={{ background: C.panel, border: `1px solid ${C.borderSoft}` }}>
+                    <div className="flex items-center gap-2">
+                      <input value={o.text} onChange={e => updateOverlay(o.id, { text: e.target.value })} placeholder="Teks (mis. EPISODE 3 — RUANG ANGKASA)"
+                        style={{ flex: 1, minWidth: 0, fontFamily: F.body, fontSize: 12, color: C.paper, background: C.panelRaised, border: `1px solid ${C.borderSoft}`, borderRadius: 4, padding: "5px 8px", outline: "none" }} />
+                      <IconButton onClick={() => removeOverlay(o.id)} icon={Trash2} title="Hapus teks" color={C.red} />
+                    </div>
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                      <label className="flex items-center gap-1.5" style={{ fontFamily: F.mono, fontSize: 9.5, color: C.paperDim }}>
+                        Posisi
+                        <select value={o.position} onChange={e => updateOverlay(o.id, { position: e.target.value })}
+                          style={{ fontFamily: F.mono, fontSize: 10, color: C.paper, background: C.panelRaised, border: `1px solid ${C.borderSoft}`, borderRadius: 3, padding: "2px 5px", outline: "none" }}>
+                          {TITLE_POSITIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                        </select>
+                      </label>
+                      <label className="flex items-center gap-1.5" style={{ fontFamily: F.mono, fontSize: 9.5, color: C.paperDim }}>
+                        Ukuran
+                        <input type="number" min={12} max={160} value={o.font_size} onChange={e => updateOverlay(o.id, { font_size: parseInt(e.target.value) || 48 })}
+                          style={{ width: 52, fontFamily: F.mono, fontSize: 10, color: C.paper, background: C.panelRaised, border: `1px solid ${C.borderSoft}`, borderRadius: 3, padding: "2px 5px", outline: "none", textAlign: "center" }} />
+                      </label>
+                      <label className="flex items-center gap-1.5" style={{ fontFamily: F.mono, fontSize: 9.5, color: C.paperDim }}>
+                        Durasi
+                        <input type="number" min={0.5} max={60} step={0.5} value={o.duration} onChange={e => updateOverlay(o.id, { duration: parseFloat(e.target.value) || 3 })}
+                          style={{ width: 52, fontFamily: F.mono, fontSize: 10, color: C.paper, background: C.panelRaised, border: `1px solid ${C.borderSoft}`, borderRadius: 3, padding: "2px 5px", outline: "none", textAlign: "center" }} />s
+                      </label>
+                      <label className="flex items-center gap-1.5" style={{ fontFamily: F.mono, fontSize: 9.5, color: C.paperDim }}>
+                        Mulai
+                        <input type="number" min={0} max={Math.max(s.duration - 0.5, 0)} step={0.5} value={o.start_offset} onChange={e => updateOverlay(o.id, { start_offset: parseFloat(e.target.value) || 0 })}
+                          style={{ width: 52, fontFamily: F.mono, fontSize: 10, color: C.paper, background: C.panelRaised, border: `1px solid ${C.borderSoft}`, borderRadius: 3, padding: "2px 5px", outline: "none", textAlign: "center" }} />s
+                      </label>
+                      <div className="flex items-center gap-1">
+                        <span style={{ fontFamily: F.mono, fontSize: 9.5, color: C.paperDim }}>Warna</span>
+                        {TITLE_COLORS.map(c => (
+                          <button key={c} title={c} onClick={() => updateOverlay(o.id, { color: c })}
+                            style={{ width: 14, height: 14, borderRadius: "50%", background: c, border: o.color === c ? `2px solid ${C.paper}` : `1px solid ${C.border}`, cursor: "pointer", padding: 0 }} />
+                        ))}
+                      </div>
+                      <label className="flex items-center gap-1.5" style={{ fontFamily: F.mono, fontSize: 9.5, color: C.paperDim, cursor: "pointer" }}>
+                        <input type="checkbox" checked={o.background_pill} onChange={e => updateOverlay(o.id, { background_pill: e.target.checked })} style={{ accentColor: C.amber }} />
+                        Pill bg
+                      </label>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         ))}
       </div>

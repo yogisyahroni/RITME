@@ -206,6 +206,103 @@ def _caption_clips_for_segment(seg: dict, style: dict, frame_w: int, frame_h: in
 
 
 # ---------------------------------------------------------------------------
+# Title/text overlay manual (P1.1) — judul, lower-third, callout
+# ---------------------------------------------------------------------------
+_TITLE_POSITIONS = {
+    "top-left": "tl", "top-center": "tc", "top-right": "tr",
+    "center-left": "cl", "center": "cc", "center-right": "cr",
+    "bottom-left": "bl", "bottom-center": "bc", "bottom-right": "br",
+}
+
+def _title_xy(pos_key: str, w: int, h: int, frame_w: int, frame_h: int, margin: int):
+    cx, cy = frame_w / 2 - w / 2, frame_h / 2 - h / 2
+    return {
+        "tl": (margin, margin),
+        "tc": (cx, margin),
+        "tr": (frame_w - w - margin, margin),
+        "cl": (margin, cy),
+        "cc": (cx, cy),
+        "cr": (frame_w - w - margin, cy),
+        "bl": (margin, frame_h - h - margin),
+        "bc": (cx, frame_h - h - margin),
+        "br": (frame_w - w - margin, frame_h - h - margin),
+    }.get(pos_key, (cx, margin))
+
+
+def _hex_to_rgba(hex_color: str, alpha: int = 255):
+    s = str(hex_color).lstrip("#")
+    try:
+        if len(s) == 3:
+            s = "".join(c * 2 for c in s)
+        return tuple(int(s[i:i + 2], 16) for i in (0, 2, 4)) + (alpha,)
+    except Exception:
+        return (255, 255, 255, alpha)
+
+
+def _title_clips_for_overlays(overlays, timed_segments, frame_w, frame_h) -> list:
+    """Text/title overlay manual (P1.1) -> ImageClips pada timeline absolut.
+    Setiap overlay: {segment_index, text, start_offset, duration, position,
+    font_size, color, background_pill} — semua opsional dengan default wajar."""
+    if not overlays:
+        return []
+    clips = []
+    import numpy as _np
+    from PIL import Image, ImageDraw, ImageFont
+    seg_by_idx = {}
+    for i, s in enumerate(timed_segments):
+        idx = s.get("index", i)
+        seg_by_idx[int(idx)] = s
+    for ov in overlays:
+        try:
+            text = str(ov.get("text", "")).strip()
+            if not text:
+                continue
+            seg = seg_by_idx.get(int(ov.get("segment_index", 0)) or 0)
+            if seg is None:
+                seg = timed_segments[0] if timed_segments else None
+            if seg is None:
+                continue
+            seg_start = float(seg.get("start", 0.0) or 0.0)
+            seg_end = float(seg.get("end", 0.0) or seg_start + 2.0)
+            if seg_end <= seg_start:
+                seg_end = seg_start + 2.0
+            font_size = max(int(ov.get("font_size", 48)), 12)
+            color = _hex_to_rgba(ov.get("color", "#FFFFFF"))
+            pill = bool(ov.get("background_pill", False))
+            pos_key = _TITLE_POSITIONS.get(str(ov.get("position", "top-center")), "tc")
+            font_path = _resolve_font()
+            font = ImageFont.truetype(font_path, font_size)
+            dummy = ImageDraw.Draw(Image.new("RGBA", (8, 8)))
+            bbox = dummy.textbbox((0, 0), text, font=font)
+            tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+            pad = int(font_size * 0.55)
+            w, h = tw + pad * 2, th + pad * 2
+            img = Image.new("RGBA", (max(w, 1), max(h, 1)), (0, 0, 0, 0))
+            d2 = ImageDraw.Draw(img)
+            if pill:
+                d2.rounded_rectangle([0, 0, w - 1, h - 1], radius=int(h * 0.5),
+                                     fill=(0, 0, 0, 175))
+            d2.text((pad - bbox[0], pad - bbox[1]), text, font=font, fill=color)
+            start_offset = float(ov.get("start_offset", 0.0) or 0.0)
+            duration = float(ov.get("duration", 3.0) or 3.0)
+            clip_start = seg_start + start_offset
+            clip_end = min(clip_start + duration, seg_end + 0.02)
+            if clip_end - clip_start < 0.1:
+                continue
+            margin = int(frame_w * 0.04)
+            x, y = _title_xy(pos_key, w, h, frame_w, frame_h, margin)
+            clips.append(
+                ImageClip(_np.array(img))
+                .with_duration(clip_end - clip_start)
+                .with_start(clip_start)
+                .with_position((x, y))
+            )
+        except Exception as e:
+            print(f"[stage5] Title overlay skipped ({e})")
+    return clips
+
+
+# ---------------------------------------------------------------------------
 # Assembly
 # ---------------------------------------------------------------------------
 def _safe_output_name(name: str, fallback: str = "ritme_output") -> str:
@@ -231,7 +328,8 @@ def assemble_video(timed_segments: list[dict], footage_map: dict[int, dict],
                     ffmpeg_preset: str = "medium",
                     segment_audio_paths: list[str] | None = None,
                     watermark_path: str | None = None,
-                    watermark_pos: str = "bottom-right") -> str:
+                    watermark_pos: str = "bottom-right",
+                    title_overlays: list[dict] | None = None) -> str:
     """
     timed_segments: output of Stage 3 (align_keywords_to_timestamps)
     footage_map: {segment_index: {"video_path": ..., ...}} from Stage 4
@@ -470,7 +568,7 @@ def assemble_video(timed_segments: list[dict], footage_map: dict[int, dict],
         except Exception as e:
             print(f"[stage5] Watermark skipped ({e})")
 
-    final = CompositeVideoClip([full_video, *watermark_layers, *caption_layers], size=(target_w, target_h))
+    final = CompositeVideoClip([full_video, *watermark_layers, *caption_layers, *_title_clips_for_overlays(title_overlays, timed_segments, target_w, target_h)], size=(target_w, target_h))
 
     if on_progress:
         on_progress(20, "Rendering (ffmpeg encode)…")

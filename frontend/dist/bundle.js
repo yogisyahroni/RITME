@@ -24089,6 +24089,19 @@
     const [saveName, setSaveName] = (0, import_react3.useState)("");
     const [saveBusy, setSaveBusy] = (0, import_react3.useState)(false);
     const [saveMsg, setSaveMsg] = (0, import_react3.useState)("");
+    const [titleOverlays, setTitleOverlays] = (0, import_react3.useState)([]);
+    const TITLE_POSITIONS = [
+      ["top-left", "Atas Kiri"],
+      ["top-center", "Atas Tengah"],
+      ["top-right", "Atas Kanan"],
+      ["center-left", "Tengah Kiri"],
+      ["center", "Tengah"],
+      ["center-right", "Tengah Kanan"],
+      ["bottom-left", "Bawah Kiri"],
+      ["bottom-center", "Bawah Tengah"],
+      ["bottom-right", "Bawah Kanan"]
+    ];
+    const TITLE_COLORS = ["#FFFFFF", "#FFD400", "#FF8A3D", "#6FE7DD", "#7FB88A", "#E8542E", "#E8A33D", "#C084FC"];
     const pxPerSec = 28 * zoom;
     (0, import_react3.useEffect)(() => {
       try {
@@ -24098,6 +24111,7 @@
         if (proj?.segments?.length) {
           setSegments(proj.segments);
           setFinishing((f) => ({ ...f, ...proj.finishing || {} }));
+          setTitleOverlays(proj.title_overlays || []);
           setRestoreNotice(true);
           restoredRef.current = true;
         }
@@ -24130,12 +24144,12 @@
       if (!segments.length) return;
       const t = setTimeout(() => {
         try {
-          localStorage.setItem(AUDIO_KEY2, JSON.stringify({ segments, finishing, savedAt: Date.now() }));
+          localStorage.setItem(AUDIO_KEY2, JSON.stringify({ segments, finishing, titleOverlays, savedAt: Date.now() }));
         } catch {
         }
       }, 800);
       return () => clearTimeout(t);
-    }, [segments, finishing]);
+    }, [segments, finishing, titleOverlays]);
     (0, import_react3.useEffect)(() => {
       const onKey = (e) => {
         const tag = (e.target.tagName || "").toLowerCase();
@@ -24285,6 +24299,7 @@
       const data = {
         segments,
         finishing,
+        titleOverlays,
         savedAt: Date.now(),
         narrationMeta: { template_name: narration?.template_name || "" }
       };
@@ -24303,6 +24318,7 @@
           pushHistory();
           setSegments(data.segments);
           setFinishing((f) => ({ ...f, ...data.finishing || {} }));
+          setTitleOverlays(data.title_overlays || []);
           setRestoreNotice(false);
           setError(null);
         } catch {
@@ -24373,7 +24389,8 @@
           })),
           finishing,
           narration_meta: { template_name: narration?.template_name || "" },
-          template_name: narration?.template_name || ""
+          template_name: narration?.template_name || "",
+          title_overlays: titleOverlays
         };
         const res = await fetch("/api/projects", {
           method: "POST",
@@ -24390,6 +24407,25 @@
       } finally {
         setSaveBusy(false);
       }
+    };
+    const addOverlay = (i) => {
+      setTitleOverlays((prev) => [...prev, {
+        id: `ov-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        segment_index: i,
+        text: "Judul",
+        start_offset: 0,
+        duration: 3,
+        position: "top-center",
+        font_size: 48,
+        color: "#FFFFFF",
+        background_pill: false
+      }]);
+    };
+    const updateOverlay = (id, patch) => {
+      setTitleOverlays((prev) => prev.map((o) => o.id === id ? { ...o, ...patch } : o));
+    };
+    const removeOverlay = (id) => {
+      setTitleOverlays((prev) => prev.filter((o) => o.id !== id));
     };
     const exportTimeline = async (preview = false) => {
       setError(null);
@@ -24417,7 +24453,17 @@
           transition_style: finishing.transition_style,
           ken_burns: finishing.ken_burns,
           watermark_path: finishing.watermark_path || null,
-          watermark_pos: finishing.watermark_pos
+          watermark_pos: finishing.watermark_pos,
+          title_overlays: titleOverlays.map((o) => ({
+            segment_index: o.segment_index,
+            text: o.text,
+            start_offset: o.start_offset,
+            duration: o.duration,
+            position: o.position,
+            font_size: o.font_size,
+            color: o.color,
+            background_pill: o.background_pill
+          }))
         };
         const resp = await fetch(endpoint, {
           method: "POST",
@@ -24605,10 +24651,22 @@
         },
         /* @__PURE__ */ import_react3.default.createElement("span", { style: { fontFamily: F.mono, fontSize: 8.5, color: C.caption, whiteSpace: "nowrap" } }, (s.narration_text || `Seg ${i + 1}`).slice(0, Math.max(2, Math.floor(dur * pxPerSec / 8))))
       );
-    })))), /* @__PURE__ */ import_react3.default.createElement("div", { className: "flex flex-col gap-2" }, /* @__PURE__ */ import_react3.default.createElement("span", { style: { fontFamily: F.mono, fontSize: 10, color: C.paperFaint, letterSpacing: "0.08em", marginBottom: 4 } }, "DETAIL SEGMEN"), segments.map((s, i) => /* @__PURE__ */ import_react3.default.createElement(
+    }))), /* @__PURE__ */ import_react3.default.createElement("div", null, /* @__PURE__ */ import_react3.default.createElement("span", { style: { fontFamily: F.mono, fontSize: 10, color: C.paperFaint, letterSpacing: "0.08em" } }, "TEXT"), /* @__PURE__ */ import_react3.default.createElement("div", { className: "relative rounded", style: { height: 30, width: timelineW, background: C.panelRaised, border: `1px solid ${C.borderSoft}`, borderRadius: 4 } }, titleOverlays.map((o) => {
+      const left = (segStarts[o.segment_index] || 0) + (o.start_offset || 0);
+      return /* @__PURE__ */ import_react3.default.createElement(
+        "div",
+        {
+          key: o.id,
+          className: "absolute rounded flex items-center px-1.5",
+          title: `Teks: ${o.text}`,
+          onClick: () => setSelectedIdx(o.segment_index),
+          style: { left: left * pxPerSec, width: Math.max((o.duration || 3) * pxPerSec - 3, 40), top: 5, height: 20, background: `${C.amber}26`, border: `1px solid ${C.amber}55`, overflow: "hidden", cursor: "pointer" }
+        },
+        /* @__PURE__ */ import_react3.default.createElement("span", { style: { fontFamily: F.mono, fontSize: 8.5, color: C.amber, whiteSpace: "nowrap" } }, "T: ", String(o.text || "").slice(0, 10))
+      );
+    }), titleOverlays.length === 0 && /* @__PURE__ */ import_react3.default.createElement("span", { style: { fontFamily: F.body, fontSize: 9.5, color: C.paperFaint, position: "absolute", top: 7, left: 10 } }, 'Teks manual (judul, lower-third) \u2014 klik "+ TEKS" di detail segmen')))), /* @__PURE__ */ import_react3.default.createElement("div", { className: "flex flex-col gap-2" }, /* @__PURE__ */ import_react3.default.createElement("span", { style: { fontFamily: F.mono, fontSize: 10, color: C.paperFaint, letterSpacing: "0.08em", marginBottom: 4 } }, "DETAIL SEGMEN"), segments.map((s, i) => /* @__PURE__ */ import_react3.default.createElement("div", { key: `d-${s.index}-${i}`, className: "flex flex-col gap-2" }, /* @__PURE__ */ import_react3.default.createElement(
       "div",
       {
-        key: `d-${s.index}-${i}`,
         onClick: () => setSelectedIdx(selectedIdx === i ? null : i),
         className: "flex items-center gap-3 px-4 py-3 rounded",
         style: { background: selectedIdx === i ? "#26221A" : C.panel, border: `1px solid ${selectedIdx === i ? C.amber + "66" : C.borderSoft}`, cursor: "pointer" }
@@ -24655,7 +24713,71 @@
         e.stopPropagation();
         removeSegment(i);
       }, icon: Trash2, title: "Hapus", color: C.red }))
-    ))), error && /* @__PURE__ */ import_react3.default.createElement("div", { className: "flex items-center gap-2 px-4 py-3 rounded", style: { background: "#2A1712", border: `1px solid ${C.tallyDim}` } }, /* @__PURE__ */ import_react3.default.createElement(TriangleAlert, { size: 14, color: C.tally }), /* @__PURE__ */ import_react3.default.createElement("span", { style: { fontFamily: F.mono, fontSize: 11, color: C.paperDim } }, error)), job && /* @__PURE__ */ import_react3.default.createElement("div", { className: "flex items-center gap-3 px-4 py-3 rounded", style: { background: C.panel, border: `1px solid ${C.borderSoft}` } }, /* @__PURE__ */ import_react3.default.createElement(LoaderCircle, { size: 14, color: C.amber, className: "animate-spin" }), /* @__PURE__ */ import_react3.default.createElement("span", { style: { fontFamily: F.body, fontSize: 12, color: C.paperDim } }, job.message)), /* @__PURE__ */ import_react3.default.createElement("div", { className: "flex flex-col gap-3 px-4 py-3.5 rounded", style: { background: C.panel, border: `1px solid ${C.borderSoft}` } }, /* @__PURE__ */ import_react3.default.createElement("span", { style: { fontFamily: F.mono, fontSize: 10, color: C.amber, letterSpacing: "0.08em" } }, "FINISHING OPTIONS"), /* @__PURE__ */ import_react3.default.createElement("div", { className: "flex flex-wrap items-center gap-x-5 gap-y-3" }, /* @__PURE__ */ import_react3.default.createElement("label", { className: "flex items-center gap-2", style: { cursor: "pointer" } }, /* @__PURE__ */ import_react3.default.createElement("input", { type: "checkbox", checked: finishing.add_music, onChange: (e) => setFinishing({ ...finishing, add_music: e.target.checked }), style: { accentColor: C.tally } }), /* @__PURE__ */ import_react3.default.createElement("span", { style: { fontFamily: F.body, fontSize: 12, color: C.paper } }, "Tambah musik")), finishing.add_music && /* @__PURE__ */ import_react3.default.createElement("label", { className: "flex items-center gap-2" }, /* @__PURE__ */ import_react3.default.createElement("span", { style: { fontFamily: F.mono, fontSize: 10, color: C.paperFaint } }, "Mood"), /* @__PURE__ */ import_react3.default.createElement("select", { value: finishing.music_mood, onChange: (e) => setFinishing({ ...finishing, music_mood: e.target.value }), style: { fontFamily: F.mono, fontSize: 11, color: C.paper, background: C.panelRaised, border: `1px solid ${C.border}`, borderRadius: 3, padding: "3px 6px", outline: "none" } }, ["calm", "tense", "sad", "epic", "upbeat"].map((m) => /* @__PURE__ */ import_react3.default.createElement("option", { key: m, value: m }, m)))), /* @__PURE__ */ import_react3.default.createElement("label", { className: "flex items-center gap-2" }, /* @__PURE__ */ import_react3.default.createElement("span", { style: { fontFamily: F.mono, fontSize: 10, color: C.paperFaint } }, "Gaya caption"), /* @__PURE__ */ import_react3.default.createElement("select", { value: finishing.caption_style, onChange: (e) => setFinishing({ ...finishing, caption_style: e.target.value }), style: { fontFamily: F.mono, fontSize: 11, color: C.paper, background: C.panelRaised, border: `1px solid ${C.border}`, borderRadius: 3, padding: "3px 6px", outline: "none" } }, /* @__PURE__ */ import_react3.default.createElement("option", { value: "bold-white-bottom" }, "Bold White Bottom"), /* @__PURE__ */ import_react3.default.createElement("option", { value: "minimal-white-center" }, "Minimal White Center"), /* @__PURE__ */ import_react3.default.createElement("option", { value: "news-style-lower-third" }, "News Lower Third"))), /* @__PURE__ */ import_react3.default.createElement("label", { className: "flex items-center gap-2" }, /* @__PURE__ */ import_react3.default.createElement("span", { style: { fontFamily: F.mono, fontSize: 10, color: C.paperFaint } }, "Transisi"), /* @__PURE__ */ import_react3.default.createElement("select", { value: finishing.transition_style, onChange: (e) => setFinishing({ ...finishing, transition_style: e.target.value }), style: { fontFamily: F.mono, fontSize: 11, color: C.paper, background: C.panelRaised, border: `1px solid ${C.border}`, borderRadius: 3, padding: "3px 6px", outline: "none" } }, /* @__PURE__ */ import_react3.default.createElement("option", { value: "hard_cut" }, "Hard Cut"), /* @__PURE__ */ import_react3.default.createElement("option", { value: "crossfade" }, "Crossfade"))), /* @__PURE__ */ import_react3.default.createElement("label", { className: "flex items-center gap-2", style: { cursor: "pointer" } }, /* @__PURE__ */ import_react3.default.createElement("input", { type: "checkbox", checked: finishing.ken_burns, onChange: (e) => setFinishing({ ...finishing, ken_burns: e.target.checked }), style: { accentColor: C.tally } }), /* @__PURE__ */ import_react3.default.createElement("span", { style: { fontFamily: F.body, fontSize: 12, color: C.paper } }, "Ken Burns (zoom pelan)")), /* @__PURE__ */ import_react3.default.createElement("div", { className: "flex items-center gap-2 flex-wrap" }, /* @__PURE__ */ import_react3.default.createElement("span", { style: { fontFamily: F.mono, fontSize: 10, color: C.paperFaint } }, "Watermark"), finishing.watermark_name ? /* @__PURE__ */ import_react3.default.createElement(import_react3.default.Fragment, null, /* @__PURE__ */ import_react3.default.createElement("button", { onClick: () => wmRef.current?.click(), className: "px-2.5 py-1 rounded", style: { fontFamily: F.mono, fontSize: 11, color: C.cyan, background: C.panelRaised, border: `1px solid ${C.border}`, cursor: "pointer" } }, "\u{1F5BC} ", finishing.watermark_name), /* @__PURE__ */ import_react3.default.createElement("button", { onClick: () => setFinishing((f) => ({ ...f, watermark_path: "", watermark_name: "" })), className: "px-2 py-1 rounded", style: { fontFamily: F.mono, fontSize: 11, color: C.red, background: "none", border: "none", cursor: "pointer" } }, "\u2715")) : /* @__PURE__ */ import_react3.default.createElement("button", { onClick: () => wmRef.current?.click(), className: "px-2.5 py-1 rounded", style: { fontFamily: F.mono, fontSize: 11, color: C.paperDim, background: C.panelRaised, border: `1px solid ${C.border}`, cursor: "pointer" } }, "+ Logo"), /* @__PURE__ */ import_react3.default.createElement("input", { ref: wmRef, type: "file", accept: "image/*", style: { display: "none" }, onChange: onWatermarkFile }), /* @__PURE__ */ import_react3.default.createElement(
+    ), selectedIdx === i && /* @__PURE__ */ import_react3.default.createElement("div", { className: "flex flex-col gap-2 px-4 py-3 rounded", style: { background: C.panelRaised, border: `1px dashed ${C.border}` } }, /* @__PURE__ */ import_react3.default.createElement("div", { className: "flex items-center justify-between" }, /* @__PURE__ */ import_react3.default.createElement("span", { style: { fontFamily: F.mono, fontSize: 10, color: C.amber, letterSpacing: "0.08em" } }, "TEKS OVERLAY (judul \xB7 lower-third \xB7 callout)"), /* @__PURE__ */ import_react3.default.createElement(
+      "button",
+      {
+        onClick: () => addOverlay(i),
+        className: "flex items-center gap-1 px-2.5 py-1 rounded",
+        style: { background: "rgba(232,163,61,0.12)", border: `1px solid ${C.amber}66`, color: C.amber, fontFamily: F.mono, fontSize: 10, cursor: "pointer" }
+      },
+      "+ TEKS"
+    )), titleOverlays.filter((o) => o.segment_index === i).length === 0 && /* @__PURE__ */ import_react3.default.createElement("span", { style: { fontFamily: F.body, fontSize: 11, color: C.paperFaint } }, 'Belum ada teks di segmen ini \u2014 klik "+ TEKS" untuk tambah judul/lower-third.'), titleOverlays.filter((o) => o.segment_index === i).map((o) => /* @__PURE__ */ import_react3.default.createElement("div", { key: o.id, className: "flex flex-col gap-2 rounded p-2.5", style: { background: C.panel, border: `1px solid ${C.borderSoft}` } }, /* @__PURE__ */ import_react3.default.createElement("div", { className: "flex items-center gap-2" }, /* @__PURE__ */ import_react3.default.createElement(
+      "input",
+      {
+        value: o.text,
+        onChange: (e) => updateOverlay(o.id, { text: e.target.value }),
+        placeholder: "Teks (mis. EPISODE 3 \u2014 RUANG ANGKASA)",
+        style: { flex: 1, minWidth: 0, fontFamily: F.body, fontSize: 12, color: C.paper, background: C.panelRaised, border: `1px solid ${C.borderSoft}`, borderRadius: 4, padding: "5px 8px", outline: "none" }
+      }
+    ), /* @__PURE__ */ import_react3.default.createElement(IconButton, { onClick: () => removeOverlay(o.id), icon: Trash2, title: "Hapus teks", color: C.red })), /* @__PURE__ */ import_react3.default.createElement("div", { className: "flex flex-wrap items-center gap-x-4 gap-y-2" }, /* @__PURE__ */ import_react3.default.createElement("label", { className: "flex items-center gap-1.5", style: { fontFamily: F.mono, fontSize: 9.5, color: C.paperDim } }, "Posisi", /* @__PURE__ */ import_react3.default.createElement(
+      "select",
+      {
+        value: o.position,
+        onChange: (e) => updateOverlay(o.id, { position: e.target.value }),
+        style: { fontFamily: F.mono, fontSize: 10, color: C.paper, background: C.panelRaised, border: `1px solid ${C.borderSoft}`, borderRadius: 3, padding: "2px 5px", outline: "none" }
+      },
+      TITLE_POSITIONS.map(([v, l]) => /* @__PURE__ */ import_react3.default.createElement("option", { key: v, value: v }, l))
+    )), /* @__PURE__ */ import_react3.default.createElement("label", { className: "flex items-center gap-1.5", style: { fontFamily: F.mono, fontSize: 9.5, color: C.paperDim } }, "Ukuran", /* @__PURE__ */ import_react3.default.createElement(
+      "input",
+      {
+        type: "number",
+        min: 12,
+        max: 160,
+        value: o.font_size,
+        onChange: (e) => updateOverlay(o.id, { font_size: parseInt(e.target.value) || 48 }),
+        style: { width: 52, fontFamily: F.mono, fontSize: 10, color: C.paper, background: C.panelRaised, border: `1px solid ${C.borderSoft}`, borderRadius: 3, padding: "2px 5px", outline: "none", textAlign: "center" }
+      }
+    )), /* @__PURE__ */ import_react3.default.createElement("label", { className: "flex items-center gap-1.5", style: { fontFamily: F.mono, fontSize: 9.5, color: C.paperDim } }, "Durasi", /* @__PURE__ */ import_react3.default.createElement(
+      "input",
+      {
+        type: "number",
+        min: 0.5,
+        max: 60,
+        step: 0.5,
+        value: o.duration,
+        onChange: (e) => updateOverlay(o.id, { duration: parseFloat(e.target.value) || 3 }),
+        style: { width: 52, fontFamily: F.mono, fontSize: 10, color: C.paper, background: C.panelRaised, border: `1px solid ${C.borderSoft}`, borderRadius: 3, padding: "2px 5px", outline: "none", textAlign: "center" }
+      }
+    ), "s"), /* @__PURE__ */ import_react3.default.createElement("label", { className: "flex items-center gap-1.5", style: { fontFamily: F.mono, fontSize: 9.5, color: C.paperDim } }, "Mulai", /* @__PURE__ */ import_react3.default.createElement(
+      "input",
+      {
+        type: "number",
+        min: 0,
+        max: Math.max(s.duration - 0.5, 0),
+        step: 0.5,
+        value: o.start_offset,
+        onChange: (e) => updateOverlay(o.id, { start_offset: parseFloat(e.target.value) || 0 }),
+        style: { width: 52, fontFamily: F.mono, fontSize: 10, color: C.paper, background: C.panelRaised, border: `1px solid ${C.borderSoft}`, borderRadius: 3, padding: "2px 5px", outline: "none", textAlign: "center" }
+      }
+    ), "s"), /* @__PURE__ */ import_react3.default.createElement("div", { className: "flex items-center gap-1" }, /* @__PURE__ */ import_react3.default.createElement("span", { style: { fontFamily: F.mono, fontSize: 9.5, color: C.paperDim } }, "Warna"), TITLE_COLORS.map((c) => /* @__PURE__ */ import_react3.default.createElement(
+      "button",
+      {
+        key: c,
+        title: c,
+        onClick: () => updateOverlay(o.id, { color: c }),
+        style: { width: 14, height: 14, borderRadius: "50%", background: c, border: o.color === c ? `2px solid ${C.paper}` : `1px solid ${C.border}`, cursor: "pointer", padding: 0 }
+      }
+    ))), /* @__PURE__ */ import_react3.default.createElement("label", { className: "flex items-center gap-1.5", style: { fontFamily: F.mono, fontSize: 9.5, color: C.paperDim, cursor: "pointer" } }, /* @__PURE__ */ import_react3.default.createElement("input", { type: "checkbox", checked: o.background_pill, onChange: (e) => updateOverlay(o.id, { background_pill: e.target.checked }), style: { accentColor: C.amber } }), "Pill bg")))))))), error && /* @__PURE__ */ import_react3.default.createElement("div", { className: "flex items-center gap-2 px-4 py-3 rounded", style: { background: "#2A1712", border: `1px solid ${C.tallyDim}` } }, /* @__PURE__ */ import_react3.default.createElement(TriangleAlert, { size: 14, color: C.tally }), /* @__PURE__ */ import_react3.default.createElement("span", { style: { fontFamily: F.mono, fontSize: 11, color: C.paperDim } }, error)), job && /* @__PURE__ */ import_react3.default.createElement("div", { className: "flex items-center gap-3 px-4 py-3 rounded", style: { background: C.panel, border: `1px solid ${C.borderSoft}` } }, /* @__PURE__ */ import_react3.default.createElement(LoaderCircle, { size: 14, color: C.amber, className: "animate-spin" }), /* @__PURE__ */ import_react3.default.createElement("span", { style: { fontFamily: F.body, fontSize: 12, color: C.paperDim } }, job.message)), /* @__PURE__ */ import_react3.default.createElement("div", { className: "flex flex-col gap-3 px-4 py-3.5 rounded", style: { background: C.panel, border: `1px solid ${C.borderSoft}` } }, /* @__PURE__ */ import_react3.default.createElement("span", { style: { fontFamily: F.mono, fontSize: 10, color: C.amber, letterSpacing: "0.08em" } }, "FINISHING OPTIONS"), /* @__PURE__ */ import_react3.default.createElement("div", { className: "flex flex-wrap items-center gap-x-5 gap-y-3" }, /* @__PURE__ */ import_react3.default.createElement("label", { className: "flex items-center gap-2", style: { cursor: "pointer" } }, /* @__PURE__ */ import_react3.default.createElement("input", { type: "checkbox", checked: finishing.add_music, onChange: (e) => setFinishing({ ...finishing, add_music: e.target.checked }), style: { accentColor: C.tally } }), /* @__PURE__ */ import_react3.default.createElement("span", { style: { fontFamily: F.body, fontSize: 12, color: C.paper } }, "Tambah musik")), finishing.add_music && /* @__PURE__ */ import_react3.default.createElement("label", { className: "flex items-center gap-2" }, /* @__PURE__ */ import_react3.default.createElement("span", { style: { fontFamily: F.mono, fontSize: 10, color: C.paperFaint } }, "Mood"), /* @__PURE__ */ import_react3.default.createElement("select", { value: finishing.music_mood, onChange: (e) => setFinishing({ ...finishing, music_mood: e.target.value }), style: { fontFamily: F.mono, fontSize: 11, color: C.paper, background: C.panelRaised, border: `1px solid ${C.border}`, borderRadius: 3, padding: "3px 6px", outline: "none" } }, ["calm", "tense", "sad", "epic", "upbeat"].map((m) => /* @__PURE__ */ import_react3.default.createElement("option", { key: m, value: m }, m)))), /* @__PURE__ */ import_react3.default.createElement("label", { className: "flex items-center gap-2" }, /* @__PURE__ */ import_react3.default.createElement("span", { style: { fontFamily: F.mono, fontSize: 10, color: C.paperFaint } }, "Gaya caption"), /* @__PURE__ */ import_react3.default.createElement("select", { value: finishing.caption_style, onChange: (e) => setFinishing({ ...finishing, caption_style: e.target.value }), style: { fontFamily: F.mono, fontSize: 11, color: C.paper, background: C.panelRaised, border: `1px solid ${C.border}`, borderRadius: 3, padding: "3px 6px", outline: "none" } }, /* @__PURE__ */ import_react3.default.createElement("option", { value: "bold-white-bottom" }, "Bold White Bottom"), /* @__PURE__ */ import_react3.default.createElement("option", { value: "minimal-white-center" }, "Minimal White Center"), /* @__PURE__ */ import_react3.default.createElement("option", { value: "news-style-lower-third" }, "News Lower Third"))), /* @__PURE__ */ import_react3.default.createElement("label", { className: "flex items-center gap-2" }, /* @__PURE__ */ import_react3.default.createElement("span", { style: { fontFamily: F.mono, fontSize: 10, color: C.paperFaint } }, "Transisi"), /* @__PURE__ */ import_react3.default.createElement("select", { value: finishing.transition_style, onChange: (e) => setFinishing({ ...finishing, transition_style: e.target.value }), style: { fontFamily: F.mono, fontSize: 11, color: C.paper, background: C.panelRaised, border: `1px solid ${C.border}`, borderRadius: 3, padding: "3px 6px", outline: "none" } }, /* @__PURE__ */ import_react3.default.createElement("option", { value: "hard_cut" }, "Hard Cut"), /* @__PURE__ */ import_react3.default.createElement("option", { value: "crossfade" }, "Crossfade"))), /* @__PURE__ */ import_react3.default.createElement("label", { className: "flex items-center gap-2", style: { cursor: "pointer" } }, /* @__PURE__ */ import_react3.default.createElement("input", { type: "checkbox", checked: finishing.ken_burns, onChange: (e) => setFinishing({ ...finishing, ken_burns: e.target.checked }), style: { accentColor: C.tally } }), /* @__PURE__ */ import_react3.default.createElement("span", { style: { fontFamily: F.body, fontSize: 12, color: C.paper } }, "Ken Burns (zoom pelan)")), /* @__PURE__ */ import_react3.default.createElement("div", { className: "flex items-center gap-2 flex-wrap" }, /* @__PURE__ */ import_react3.default.createElement("span", { style: { fontFamily: F.mono, fontSize: 10, color: C.paperFaint } }, "Watermark"), finishing.watermark_name ? /* @__PURE__ */ import_react3.default.createElement(import_react3.default.Fragment, null, /* @__PURE__ */ import_react3.default.createElement("button", { onClick: () => wmRef.current?.click(), className: "px-2.5 py-1 rounded", style: { fontFamily: F.mono, fontSize: 11, color: C.cyan, background: C.panelRaised, border: `1px solid ${C.border}`, cursor: "pointer" } }, "\u{1F5BC} ", finishing.watermark_name), /* @__PURE__ */ import_react3.default.createElement("button", { onClick: () => setFinishing((f) => ({ ...f, watermark_path: "", watermark_name: "" })), className: "px-2 py-1 rounded", style: { fontFamily: F.mono, fontSize: 11, color: C.red, background: "none", border: "none", cursor: "pointer" } }, "\u2715")) : /* @__PURE__ */ import_react3.default.createElement("button", { onClick: () => wmRef.current?.click(), className: "px-2.5 py-1 rounded", style: { fontFamily: F.mono, fontSize: 11, color: C.paperDim, background: C.panelRaised, border: `1px solid ${C.border}`, cursor: "pointer" } }, "+ Logo"), /* @__PURE__ */ import_react3.default.createElement("input", { ref: wmRef, type: "file", accept: "image/*", style: { display: "none" }, onChange: onWatermarkFile }), /* @__PURE__ */ import_react3.default.createElement(
       "select",
       {
         value: finishing.watermark_pos,

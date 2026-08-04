@@ -949,6 +949,51 @@ def test_project_library_p01():
         check("list empty after delete", pid not in [p["id"] for p in client.get("/api/projects").json()["projects"]])
 
 
+def test_title_overlay_p11():
+    """P1.1 text/title overlay — helper render + endpoint preview terima title_overlays."""
+    import pipeline.stage5_assembly as s5
+    segs, total = make_timed_segments()
+    overlays = [
+        {"segment_index": 0, "text": "EPISODE 3 — RUANG ANGKASA", "position": "top-center",
+         "font_size": 26, "color": "#FFD400", "background_pill": True, "duration": 2.0},
+        {"segment_index": 1, "text": "Lower third", "position": "bottom-left", "font_size": 20},
+    ]
+    clips = s5._title_clips_for_overlays(overlays, segs, 360, 640)
+    check("overlay -> 2 clips", len(clips) == 2, f"got {len(clips)}")
+    check("start aligned to segment", abs(clips[0].start - segs[0]["start"]) < 1e-6,
+          f"{clips[0].start} vs {segs[0]['start']}")
+    check("duration clamped to segment", clips[0].duration <= segs[0]["duration"] + 0.05,
+          f"{clips[0].duration}")
+    check("empty overlays -> []", s5._title_clips_for_overlays([], segs, 360, 640) == [])
+    check("none overlays -> []", s5._title_clips_for_overlays(None, segs, 360, 640) == [])
+    # text kosong di-skip, sisanya tetap render
+    clips2 = s5._title_clips_for_overlays(
+        [{"segment_index": 0, "text": "   "}, {"segment_index": 0, "text": "OK"}], segs, 360, 640)
+    check("blank text skipped", len(clips2) == 1, f"got {len(clips2)}")
+    # posisi dihitung dalam frame
+    x, y = s5._title_xy("tr", 100, 40, 360, 640, 14)
+    check("pos top-right", x == 360 - 100 - 14 and y == 14, f"{x},{y}")
+
+    # endpoint: preview render dengan overlay (1 segmen video pendek)
+    import server as server_mod
+    from fastapi.testclient import TestClient
+    from config import AUDIO_CACHE_DIR
+    clip = make_test_video(Path("cache") / "test" / "clip_title.mp4", "red", 2.5, size="360x640")
+    with TestClient(server_mod.app) as client:
+        body = {
+            "segments": [{"index": 0, "video_path": str(clip), "narration_text": "Test",
+                          "duration": 2.5, "start_trim": 0, "end_trim": 0}],
+            "narration_audio_path": "",
+            "output_name": "title_overlay_preview",
+            "title_overlays": [{"segment_index": 0, "text": "JUDUL EPISODE",
+                                "position": "top-center", "font_size": 24}],
+        }
+        r = client.post("/api/timeline/preview", json=body)
+        check("preview with overlay 200", r.status_code == 200, f"got {r.status_code}: {r.text[:150]}")
+        rp = client.post("/api/timeline/preview", json={**body, "title_overlays": []})
+        check("preview no overlay 200", rp.status_code == 200, f"got {rp.status_code}")
+
+
 def main():
     which = set(sys.argv[1:])
     run_all = "--all" in which or len(which) == 0
@@ -970,6 +1015,7 @@ def main():
         ("watermark", test_watermark),
         ("batch_render", test_batch_render),
         ("project_library_p01", test_project_library_p01),
+        ("title_overlay_p11", test_title_overlay_p11),
     ]
     if run_all or "--with-server" in which:
         tests.append(("server_render", test_server_render_endpoint))
